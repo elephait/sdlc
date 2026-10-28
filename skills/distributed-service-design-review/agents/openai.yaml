@@ -1,0 +1,4 @@
+interface:
+  display_name: "Distributed service design review"
+  short_description: "Review service architecture, failure paths and tradeoffs"
+  default_prompt: "Use $distributed-service-design-review to inspect this service and review its correctness, recovery and architectural tradeoffs."
