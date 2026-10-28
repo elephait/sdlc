@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "hnb-copilot-sdlc",
+  "version": "0.1.0",
+  "description": "Shared traceable SDLC workflow, policy, skills, and tracking hooks for Copilot",
+  "author": {
+    "name": "Huntington"
+  },
+  "keywords": [
+    "copilot",
+    "sdlc",
+    "traceability",
+    "metrics"
+  ]
+}

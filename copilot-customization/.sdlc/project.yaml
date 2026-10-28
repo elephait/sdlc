@@ -1,0 +1,27 @@
+schemaVersion: 1
+project: copilot-customization
+repository: hnb-ent/copilot-customization
+workspaceRoot: 'C:\dev\common\elephait\sdlc\copilot-customization'
+
+technology:
+  language: python
+  pythonVersion: '3.11+'
+  runtimeDependencies: none
+  storage: sqlite
+
+validation:
+  compile:
+    command: python -m compileall -q src plugin/scripts
+  test:
+    command: python -m unittest discover -s tests -v
+  smoke:
+    command: python -m copilot_customization.cli --help
+
+git:
+  pushRequiresApproval: true
+  localCommitRequiresApproval: false
+  destructiveOperationsAllowed: false
+
+tracking:
+  storyId: COPILOT-CUSTOMIZATION-001
+  ledgerPath: 'C:\dev\common\copilot\sdlc\ledger\stories\copilot-customization\COPILOT-CUSTOMIZATION-001'
