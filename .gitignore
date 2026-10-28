@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SDLC tracking state (local, per machine)
+.sdlc/active-story.json
+.sdlc/hooks/
+core/data/*.db
+core/data/*.db-*
+core/reports/generated/

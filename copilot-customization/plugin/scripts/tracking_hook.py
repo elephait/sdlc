@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import msvcrt
 import sys
 import time
 from datetime import datetime, timezone
@@ -9,6 +8,34 @@ from pathlib import Path
 from typing import Any
 
 DEV_ROOT = Path(r"C:\dev")
+
+try:  # Windows
+    import msvcrt
+
+    def _lock(handle) -> None:
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+
+    def _unlock(handle) -> None:
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+except ImportError:  # POSIX
+    import fcntl
+
+    def _lock(handle) -> None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock(handle) -> None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+CLEAN_STOP_REASONS = {
+    "complete",
+    "user_exit",
+    "clear",
+    "logout",
+    "prompt_input_exit",
+    "other",
+}
 
 
 def main() -> int:
@@ -33,13 +60,20 @@ def main() -> int:
     append_jsonl(event_path, event)
 
     if event["event"] == "SessionStart":
+        context = (
+            f"SDLC tracking is active for {event['storyId']}. "
+            f"Events are written to {event_path}."
+        )
+        # Claude Code and VS Code read hookSpecificOutput; the top-level key
+        # is kept for hosts that read the older shape.
         print(
             json.dumps(
                 {
-                    "additionalContext": (
-                        f"SDLC tracking is active for {event['storyId']}. "
-                        f"Events are written to {event_path}."
-                    )
+                    "hookSpecificOutput": {
+                        "hookEventName": "SessionStart",
+                        "additionalContext": context,
+                    },
+                    "additionalContext": context,
                 }
             )
         )
@@ -91,12 +125,17 @@ def build_event(
     error_code = None
     failure_message = None
     event_type = hook_event or "HookEvent"
-    if hook_event == "Stop":
+    if hook_event in {"Stop", "SessionEnd"}:
+        # Hosts that report no reason (Claude Code's Stop) are not failures.
         reason = str(payload.get("reason") or "")
-        success = reason in {"complete", "user_exit"}
+        success = not reason or reason in CLEAN_STOP_REASONS
         if not success:
             error_code = "SESSION_STOP_FAILURE"
-            failure_message = f"Session stopped with reason: {reason or 'unknown'}"
+            failure_message = f"Session stopped with reason: {reason}"
+    elif hook_event == "PostToolUseFailure":
+        success = False
+        error_code = "TOOL_FAILURE"
+        failure_message = str(payload.get("error") or "Tool call failed")
 
     return {
         "timestamp": timestamp,
@@ -126,7 +165,7 @@ def append_jsonl(path: Path, event: dict[str, Any]) -> None:
         deadline = time.monotonic() + 4
         while True:
             try:
-                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+                _lock(lock)
                 break
             except OSError:
                 if time.monotonic() >= deadline:
@@ -138,7 +177,7 @@ def append_jsonl(path: Path, event: dict[str, Any]) -> None:
                 stream.flush()
         finally:
             lock.seek(0)
-            msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            _unlock(lock)
 
 
 def now() -> str:

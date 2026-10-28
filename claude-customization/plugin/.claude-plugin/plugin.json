@@ -1,0 +1,7 @@
+{
+  "name": "sdlc",
+  "version": "0.1.0",
+  "description": "Traceable SDLC workflow for Claude: tracked-story and design-review skills, evidence tracking hooks, and a scope guard for commits and pushes",
+  "author": { "name": "denistek" },
+  "keywords": ["sdlc", "traceability", "review", "metrics"]
+}

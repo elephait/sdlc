@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tracked story delivery"
+  short_description: "Deliver a story with review, tracking and commit"
+  default_prompt: "Use $tracked-story to deliver this story with traceable review, a readiness gate and a local commit report."

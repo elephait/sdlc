@@ -84,6 +84,11 @@ def parser() -> argparse.ArgumentParser:
         "--validation-summary",
         help="Commit-specific validation evidence, or omit when unavailable.",
     )
+    ready.add_argument(
+        "--co-author",
+        help='Commit trailer identity, e.g. "Claude <noreply@anthropic.com>". '
+        "Defaults to $SDLC_CO_AUTHOR, then Copilot.",
+    )
 
     event = commands.add_parser("event")
     event.add_argument("--story", required=True)
@@ -237,6 +242,7 @@ def main(argv: list[str] | None = None) -> int:
                         args.finding,
                         args.db,
                         args.validation_summary,
+                        args.co_author,
                     ),
                     indent=2,
                 )

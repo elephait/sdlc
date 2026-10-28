@@ -16,7 +16,11 @@ from uuid import uuid4
 from .db import DEFAULT_DB, DEV_ROOT, database, initialize, require_under_dev
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PLUGIN_SCRIPT_ROOT = PROJECT_ROOT / "plugin" / "scripts"
+HOOK_SCRIPT_ROOT = PROJECT_ROOT / "scripts"
+DEFAULT_CO_AUTHOR = (
+    os.environ.get("SDLC_CO_AUTHOR")
+    or "Copilot <223556219+Copilot@users.noreply.github.com>"
+)
 DEFAULT_REPORT_ROOT = PROJECT_ROOT / "reports" / "generated"
 TRACKING_STALE_AFTER = timedelta(minutes=15)
 DEFAULT_LEDGER_ROOT = Path(r"C:\dev\common\copilot\sdlc\ledger\stories")
@@ -359,7 +363,7 @@ def _install_tracking_hooks(workspace: Path) -> str:
     }
     files = {
         runtime_script: (
-            PLUGIN_SCRIPT_ROOT / "tracking_hook.py"
+            HOOK_SCRIPT_ROOT / "tracking_hook.py"
         ).read_text(encoding="utf-8"),
         hook_config: json.dumps(
             {"version": 1, "hooks": hooks},
@@ -619,6 +623,7 @@ def commit_ready(
     findings: list[str],
     db_path: Path = DEFAULT_DB,
     validation_summary: str | None = None,
+    co_author: str | None = None,
 ) -> dict[str, Any]:
     resolved_workspace = require_under_dev(workspace, "Workspace")
     active_path = resolved_workspace / ".sdlc" / "active-story.json"
@@ -672,7 +677,7 @@ def commit_ready(
         "-m",
         title,
         "-m",
-        "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>",
+        f"Co-authored-by: {co_author or DEFAULT_CO_AUTHOR}",
     )
     commit_hash = _run_git(repository_root, "rev-parse", "HEAD")
     report = _write_commit_analysis(
@@ -757,7 +762,7 @@ def _commit_policy_decision(
     repository_root: Path,
     command: str,
 ) -> dict[str, Any]:
-    script = PROJECT_ROOT / "plugin" / "scripts" / "scope_hook.py"
+    script = HOOK_SCRIPT_ROOT / "scope_hook.py"
     completed = subprocess.run(
         [sys.executable, str(script)],
         input=json.dumps(
@@ -1471,7 +1476,7 @@ def tracking_report(
             "hookLedger": {
                 "eventCount": 0,
                 "message": (
-                    "No tracking events have been captured. Start a new Copilot "
+                    "No tracking events have been captured. Start a new agent "
                     "session after enabling the tracking-only hooks."
                 ),
             },
@@ -1550,7 +1555,7 @@ def _tracking_health(
         status = "stale" if latest else "missing"
         warnings.append(
             "Tracking hooks changed after the newest captured evidence. "
-            "Start a new Copilot session before relying on this report."
+            "Start a new agent session before relying on this report."
         )
 
     return {

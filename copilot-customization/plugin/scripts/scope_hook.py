@@ -36,6 +36,13 @@ RESET = "\033[0m"
 DANGER = "🔴 DANGER"
 
 
+# Match the git subcommand itself, so `git log --grep commit` or file text that
+# mentions "git push" is not mistaken for the operation.
+GIT_GLOBALS = r"""(?:\s+(?:-C|-c)\s+(?:"[^"]*"|'[^']*'|\S+)|\s+--?[\w-]+(?:=\S+)?)*"""
+GIT_PUSH = re.compile(rf"(?i)\bgit\b{GIT_GLOBALS}\s+push\b")
+GIT_COMMIT = re.compile(rf"(?i)\bgit\b{GIT_GLOBALS}\s+commit\b")
+
+
 def strings(value):
     if isinstance(value, str):
         yield value
@@ -143,7 +150,7 @@ def record_credential_approval(
 def commit_title(command: str, cwd: Path) -> str | None:
     message = re.search(
         r"""(?ix)
-        (?:^|\s)(?:-m|--message)
+        (?:^|\s)(?:-[a-zA-Z]*m|--message)
         (?:=|\s+)
         (?:
             "([^"]*)"
@@ -184,24 +191,30 @@ def git_command_cwd(command: str, fallback: Path) -> Path:
 
 
 def hook_decision(payload: dict[str, object]) -> dict[str, str]:
-    text = "\n".join(strings(payload))
     tool = str(payload.get("toolName") or payload.get("tool_name") or "")
     tool_input = payload.get("toolArgs", payload.get("tool_input"))
     tool_text = "\n".join(strings(tool_input))
+    # Git operations are judged on the shell command only, never on file
+    # content or other arguments that merely mention them.
+    command = (
+        str(tool_input.get("command", ""))
+        if isinstance(tool_input, dict)
+        else ""
+    )
     cwd = str(payload.get("cwd", ""))
     decision = "allow"
     reason = r"Allowed by the C:\dev universal policy."
 
-    if re.search(r"(?i)\bgit\b[^\r\n;|]*\bpush\b", text):
-        decision = "ask"
+    if GIT_PUSH.search(command):
+        decision = "deny"
         reason = (
-            "Git push or equivalent remote publication requires explicit approval."
+            "Git push is the user's operation; agents must not publish. "
+            "Ask the user to push."
         )
 
-    commit = re.search(r"(?i)\bgit\b[^\r\n;|]*\bcommit\b", tool_text)
-    if commit:
-        repository = git_command_cwd(tool_text, Path(cwd or Path.cwd()))
-        title = commit_title(tool_text, repository)
+    if GIT_COMMIT.search(command):
+        repository = git_command_cwd(command, Path(cwd or Path.cwd()))
+        title = commit_title(command, repository)
         if title is None or not title.startswith(COMMIT_PREFIXES):
             decision = "deny"
             reason = (
@@ -262,8 +275,10 @@ def approval_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    if len(sys.argv) > 1:
-        args = approval_parser().parse_args()
+    no_allow = "--no-allow" in sys.argv[1:]
+    argv = [arg for arg in sys.argv[1:] if arg != "--no-allow"]
+    if argv:
+        args = approval_parser().parse_args(argv)
         record = record_credential_approval(
             args.workspace,
             args.approved_by,
@@ -276,12 +291,17 @@ def main() -> int:
         )
         print(json.dumps(record, indent=2))
         return 0
+    decision = hook_decision(json.load(sys.stdin))
+    if no_allow and decision["permissionDecision"] == "allow":
+        # Defer to the host's own permission settings; only ask or deny.
+        print("{}")
+        return 0
     print(
         json.dumps(
             {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
-                    **hook_decision(json.load(sys.stdin)),
+                    **decision,
                 }
             }
         )
