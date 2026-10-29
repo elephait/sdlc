@@ -18,7 +18,7 @@ Shared instructions, reusable skills and a lightweight Python control plane for 
 For this SDLC project, run one command from any PowerShell directory:
 
 ```powershell
-C:\dev\common\sdlc\onboard.cmd
+C:\dev\common\sdlc\onboard.cmd --workspace C:\dev\common\sdlc
 ```
 
 This refreshes all four adapters, runs validation, and refreshes shared tracking while preserving the active story. It stops on the first failure. Python 3.11+ must be on PATH. For a first-time story, supply `--story <ID> --intent "<intent>"` (the intent defaults to "Optimize shared agent customization" only for this checkout); an existing different active story is never replaced. The launcher asks which project to track, listing recent projects with the most recently used as the default (press Enter to accept, or type a number or folder name); pass `--workspace <path>` to skip the question. Adapter refresh and validation always run against the SDLC checkout containing the launcher, regardless of your current directory. It uses the latest local sources and does not pull Git changes, install global settings, or launch four agents.
@@ -33,7 +33,9 @@ python scripts/reports.py --limit 5
 
 Reports are read newest first from `core/reports/generated/`, the active story's `reviews/` folder and `md/reviews/`.
 
-After the one-time host activation below, use this same command for updates, then start a new chat in your chosen host. Other projects still need the adapter integration described in their setup guides; this launcher is for SDLC itself.
+For an already-running story, `onboard.cmd --workspace C:\dev\common\sdlc --skip-refresh` refreshes tracking without regenerating shared adapters or running validation. It does not stop sessions, clear events or replace the active story; database initialization and project-recency updates can still occur. A normal full refresh can change shared files that a running host uses, so do that when those agents are idle. `onboard.cmd --all --dry-run` previews the bulk scan without sync, verification or tracking writes.
+
+After the one-time host activation below, use this same command for updates, then start a new chat in your chosen host. Selecting another project refreshes its tracking; it still needs the adapter integration described in the setup guides. The launcher does not install customization into that project.
 
 Edit `policy/`, `skills/` and `core/`; host-specific instruction text lives only where a host needs something the others must not receive (currently Copilot and Claude). Generate and verify from this repository with Python 3.11+:
 
@@ -84,3 +86,5 @@ Optional editable install: `python -m pip install --no-deps -e core`. Both `sdlc
 ## Review and validation limits
 
 [Review of commits 3627ca2 and 5247c8c](md/reviews/2026-10-28-three-host-review.md) records the original defects and fixes. [Review of the four-host and gate work](md/reviews/2026-10-28-four-host-gates-review.md) covers this change and its residual risks. [Codex usage analysis](md/reviews/2026-10-28-codex-usage-analysis.md) explains why the credit question had no evidence and what was added to answer it. Local tests exercise Python and generated artifacts. A new session in each host is still needed to verify plugin/skill activation; successful local tests do not establish live host behavior. Scope hooks are best-effort guards, not a shell sandbox. The host's native permissions remain authoritative.
+
+[Codex completion review (2026-10-29)](md/reviews/2026-10-29-codex-completion-review.md) verifies that prior Codex work survived the newer commits and documents tracking continuity, launcher fixes and validation.

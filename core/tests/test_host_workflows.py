@@ -3,10 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import subprocess
+import sqlite3
+from contextlib import closing
 import sys
 import unittest
 
-from copilot_customization.service import commit_ready, onboard_project, record_gate
+from copilot_customization.service import (
+    commit_ready, onboard_project, record_gate, record_event, start_session,
+)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from support import make_workspace, remove_workspace  # noqa: E402
@@ -60,6 +64,58 @@ class HostWorkflowTests(unittest.TestCase):
         events = Path(result["eventPath"]).read_text().splitlines()
         self.assertEqual(1, len(events))
         self.assertFalse(json.loads(events[0])["success"])
+
+    def test_tracking_only_launcher_preserves_running_session_and_evidence(self) -> None:
+        result = self.onboard(tracking_hooks="copilot-workspace")
+        session = start_session("TEST-001", "implementation", None, "running-codex", self.db, host="codex")
+        record_event("TEST-001", "validation", session_id=session, db_path=self.db)
+        record_gate(self.workspace, "TEST-001", "analysis", evidence="fixture criteria",
+                    approved_by="fixture user", db_path=self.db)
+        ledger = Path(result["ledgerPath"])
+        paths = [self.workspace / ".sdlc/active-story.json", self.workspace / ".sdlc/project.yaml",
+                 self.workspace / ".github/hooks/copilot-sdlc.json",
+                 self.workspace / ".sdlc/hooks/tracking_hook.py", ledger / "story.md", ledger / "gates/analysis.md"]
+        before = {path: path.read_bytes() for path in paths}
+
+        def rows():
+            with closing(sqlite3.connect(self.db)) as connection:
+                return {table: connection.execute(f"SELECT * FROM {table}").fetchall()
+                        for table in ("stories", "sessions", "events", "gates")}
+
+        def capture_hook():
+            payload = {"cwd": str(self.workspace), "hook_event_name": "PostToolUse",
+                       "session_id": session, "tool_name": "Read"}
+            completed = subprocess.run(
+                [sys.executable, str(self.workspace / ".sdlc/hooks/tracking_hook.py")],
+                input=json.dumps(payload), capture_output=True, text=True)
+            self.assertEqual(0, completed.returncode, completed.stderr)
+
+        capture_hook()
+        events_before = Path(result["eventPath"]).read_bytes()
+        records_before = rows()
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/onboard.py"), "--workspace", str(self.workspace),
+             "--db", str(self.db), "--skip-refresh"], cwd=self.workspace, capture_output=True, text=True)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual(records_before, rows())
+        self.assertEqual(before, {path: path.read_bytes() for path in paths})
+        self.assertEqual(events_before, Path(result["eventPath"]).read_bytes())
+        capture_hook()
+        self.assertEqual(2, len(Path(result["eventPath"]).read_text().splitlines()))
+        record_event("TEST-001", "validation", session_id=session, db_path=self.db)
+        with closing(sqlite3.connect(self.db)) as connection:
+            self.assertEqual((None, None), connection.execute(
+                "SELECT ended_at, outcome FROM sessions WHERE session_id = ?", (session,)).fetchone())
+
+    def test_codex_documented_validation_event_is_accepted(self) -> None:
+        self.onboard()
+        session = start_session("TEST-001", "implementation", None, None, self.db, host="codex")
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/sdlc.py"), "--db", str(self.db),
+             "event", "--story", "TEST-001", "--session", session,
+             "--type", "validation", "--tool", "verify.py"],
+            cwd=self.workspace, capture_output=True, text=True)
+        self.assertEqual(0, completed.returncode, completed.stderr)
 
     def test_commit_workflow_respects_required_git_signing(self) -> None:
         self.onboard()

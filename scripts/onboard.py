@@ -43,6 +43,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workspace", type=Path,
                         help="Project to track. Omit to choose from recent projects (Enter = most recent).")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
+    parser.add_argument("--skip-refresh", action="store_true",
+                        help="Refresh tracking only; do not regenerate adapters or run validation.")
     parser.add_argument("--story", help="Optional story ID; existing active binding is preserved by default.")
     parser.add_argument("--intent",
                         help="Intent used only when creating the story in the local database "
@@ -61,18 +63,24 @@ def main(argv: list[str] | None = None) -> int:
         onboard.extend(["--intent", intent])
     if args.story:
         onboard.extend(["--story", args.story])
-    for label, command in (
+    steps = [
         ("Refresh Copilot, Claude, Codex and DeepSeek customizations", ["scripts/sync-customizations.py"]),
         ("Validate shared code and generated customizations", ["scripts/verify.py"]),
         (f"Refresh SDLC tracking for {workspace.name}", onboard),
-    ):
+    ]
+    if args.skip_refresh:
+        steps = steps[-1:]
+    for label, command in steps:
         print(f"\n{label}", flush=True)
         completed = subprocess.run([sys.executable, *command], cwd=ROOT)
         if completed.returncode:
             print(f"Stopped: {label} failed (exit {completed.returncode}).", file=sys.stderr)
             return completed.returncode
-    print(f"\nSDLC customization and tracking are ready for {workspace}. Start a new chat in your chosen host.")
-    print("Copilot/Claude plugin enablement remains a one-time host setup; see README.md.")
+    if args.skip_refresh:
+        print(f"\nTracking refreshed for {workspace}; adapters were not refreshed or validated. Existing sessions continue.")
+    else:
+        print(f"\nSDLC customization and tracking are ready for {workspace}. Use a new chat to load updated instructions.")
+        print("Copilot/Claude plugin enablement remains a one-time host setup; see README.md.")
     return 0
 
 

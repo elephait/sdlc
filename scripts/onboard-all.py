@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-tracking", action="store_true", help="Skip the project scan.")
     args = parser.parse_args(argv)
 
-    if not args.skip_refresh:
+    if not args.skip_refresh and not args.dry_run:
         code = run("Refresh all host payloads", ["scripts/sync-customizations.py"])
         if code:
             return code
@@ -180,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     ):
         print(f"  {'ok ' if path.exists() else 'missing '} {label}: {path.relative_to(REPO)}")
     print("\nEnable the Copilot and Claude plugins once in their apps; this command never changes host settings.")
-    if args.reports:
+    if args.reports and not args.dry_run:
         print()
         sys.stdout.flush()
         subprocess.run(

@@ -9,10 +9,18 @@ The root `AGENTS.md` is generated from `policy/universal.md` and `policy/harness
 One-command refresh and onboarding for SDLC itself, from any directory:
 
 ```powershell
-C:\dev\common\sdlc\onboard.cmd
+C:\dev\common\sdlc\onboard.cmd --workspace C:\dev\common\sdlc
 ```
 
-It generates all four adapters, validates them, and refreshes tracking without changing the active story. It stops on failure and does not launch agents. Plugin enablement in Copilot/Claude is still a one-time host setup. Start a new chat after refreshing instructions.
+The explicit workspace selects SDLC even when another project was used most recently. Without it the launcher offers the project picker (or chooses the recent default without a terminal). It generates all four adapters, validates them, and refreshes tracking without changing the active story. It stops on failure and does not launch or stop agents. Plugin enablement in Copilot/Claude is still a one-time host setup. Use a new chat to load updated instructions when ready; the command does not restart a current chat.
+
+If tracking is already running and you only want to refresh its registration:
+
+```powershell
+C:\dev\common\sdlc\onboard.cmd --workspace C:\dev\common\sdlc --skip-refresh
+```
+
+This skips adapter generation and validation. It preserves the current binding, session state, events, gates and installed workspace hooks. It may initialize missing database schema or update project-recency metadata, so it is not a read-only command. A conflicting `--story` fails rather than rebinding the project. The default full refresh also preserves tracking records, but can rewrite changed shared instruction/skill/hook files; defer that refresh until agents using those files are idle. No atomic live upgrade of a running host is promised.
 
 Python 3.11+ is required. Run these in PowerShell from the repository:
 
@@ -25,17 +33,40 @@ python scripts/sdlc.py --help
 
 The CLI wrapper also works from any directory using its absolute path. Optional installation: `python -m pip install --no-deps -e C:\dev\common\sdlc\core` exposes both `sdlc` and the compatible `copilot-sdlc` command.
 
-Tracking is optional for small tasks. For a new tracked story (choose an unused ID; preserve any existing active binding):
+Tracking is optional for small tasks. Continue the existing active story; generate a fresh session ID for each Codex work session:
 
 ```powershell
-python scripts/sdlc.py project-onboard --workspace C:\dev\common\sdlc --repository elephait/sdlc --story SDLC-002 --intent "Unify agent customization" --ledger-root C:\dev\common\sdlc\.sdlc\ledger --tracking-hooks none
-python scripts/sdlc.py session-start --story SDLC-002 --role implementation --session-id codex-sdlc-002 --host codex
-python scripts/sdlc.py event --story SDLC-002 --session codex-sdlc-002 --type validation --tool verify.py --progress
-python scripts/sdlc.py session-stop --session codex-sdlc-002 --outcome DONE
+$sdlcStory = (Get-Content .sdlc/active-story.json -Raw | ConvertFrom-Json).storyId
+$sdlcSession = python scripts/sdlc.py session-start --story $sdlcStory --role implementation --host codex
+python scripts/sdlc.py event --story $sdlcStory --session $sdlcSession --type validation --tool verify.py
 python scripts/sdlc.py tracking-report --workspace C:\dev\common\sdlc
 ```
 
-Record the actual validation result in a decision or the handoff report; the event above only marks progress. Use `event --failed --error-code ... --failure-message ...` for failures. The report returns exit code 2 when evidence is missing or stale; explicit records are not proof of automatic capture. `DONE` requires actual acceptance evidence.
+Record the validation event only after running the check; record its actual result in a decision or handoff report. `--progress` is valid only with `--type Iteration`, not a validation event. Use `event --failed --error-code ... --failure-message ...` for failures. Explicit records are not proof of automatic capture. The report exits 2 for missing or stale evidence.
+
+When the current work is actually finished, close only the session you created:
+
+```powershell
+python scripts/sdlc.py session-stop --session $sdlcSession --outcome DONE
+```
+
+Do not close another agent's session or reuse a previously closed session ID. `DONE` requires actual acceptance evidence. For a workspace without an active binding, use `project-onboard` with its `--workspace`, `--repository`, a new `--story` and `--intent`; do not delete an existing binding to start this example.
+
+## Handoff gates and local commit
+
+The newer shared core requires recorded gates. Inspect them before a commit:
+
+```powershell
+python scripts/sdlc.py gate-status --story $sdlcStory
+```
+
+An implementation commit needs `analysis` and `implementation`; a review-fix commit needs `review` and `docs`. Changes to customization also require `customization`. Record each gate only after its evidence and approval exist, using the actual approver rather than an assumed human approval. For example (replace the placeholders):
+
+```powershell
+python scripts/sdlc.py gate --workspace C:\dev\common\sdlc --story $sdlcStory --gate review --artifact "<review-file>" --evidence "<checks and findings reviewed>" --approved-by "<actual approver>"
+```
+
+See [the tracked-story workflow](../skills/tracked-story/SKILL.md) for all gates. A gate record does not itself establish user authorization to commit.
 
 After explicit local commit authorization, review and stage named files, then use the shared workflow (replace the summary, evidence and identity with actual values):
 
