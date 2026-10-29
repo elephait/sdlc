@@ -202,7 +202,7 @@ class GateWorkflowTests(unittest.TestCase):
                     ".agents/skills/tracked-story/SKILL.md",
                     "./core/a.py",
                     "scripts/onboard.py",
-                    "onboard.cmd",
+                    "aicode.cmd",
                 ],
             ),
         )

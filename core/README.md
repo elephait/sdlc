@@ -41,7 +41,7 @@ Tracking hooks capture `SessionStart`, tool outcomes (`PostToolUse`, plus `PostT
 
 - Tracking does not expose authoritative token usage. Sessions carry a `--host` label for attribution; billing units are not recorded because no host supplies them.
 - SQLite coordinates processes on one shared filesystem, not across machines.
-- Paths assume `C:\dev`; hook locking works on Windows and POSIX, path policy is Windows-only.
+- Paths are resolved per selected workspace. Set `SDLC_WORKSPACE_ROOT` only when a host needs an explicit broader boundary; hook locking works on Windows and POSIX.
 - Session analysis quality depends on recorded events and review summaries.
 
 Codex uses explicit CLI evidence rather than these hooks. Hook path/command checks are best-effort: shell aliases, wrappers and arbitrary interpreters require native host sandbox enforcement. A scope-hook crash is not an authorization grant.

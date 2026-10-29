@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import ntpath
+import os
 import re
 import subprocess
 import sys
@@ -58,9 +59,23 @@ def strings(value):
             yield from strings(item)
 
 
-def under_dev(value):
+def workspace_boundary(cwd):
+    configured = os.environ.get("SDLC_WORKSPACE_ROOT")
+    if configured:
+        return ntpath.abspath(configured)
+    current = Path(cwd or Path.cwd()).resolve()
+    for directory in (current, *current.parents):
+        if (directory / ".sdlc" / "active-story.json").is_file() or (
+            directory / ".git"
+        ).exists():
+            return str(directory)
+    return str(current)
+
+
+def under_workspace(value, cwd):
     normalized = ntpath.normpath(value).lower()
-    return normalized == "c:\\dev" or normalized.startswith("c:\\dev\\")
+    boundary = ntpath.normpath(workspace_boundary(cwd)).lower()
+    return normalized == boundary or normalized.startswith(boundary + "\\")
 
 
 def run_git(cwd: Path, *args: str) -> str:
@@ -223,7 +238,7 @@ def hook_decision(payload: dict[str, object]) -> dict[str, str]:
     )
     cwd = str(payload.get("cwd", ""))
     decision = "allow"
-    reason = r"Allowed by the C:\dev universal policy."
+    reason = "Allowed by the current workspace policy."
 
     if GIT_PUSH.search(command):
         decision = "deny"
@@ -264,9 +279,11 @@ def hook_decision(payload: dict[str, object]) -> dict[str, str]:
         if mutating_tool and isinstance(tool_input, dict):
             for key in ("file_path", "path", "notebook_path"):
                 value = tool_input.get(key)
-                if isinstance(value, str) and not under_dev(ntpath.join(cwd, value)):
+                if isinstance(value, str) and not under_workspace(
+                    ntpath.join(cwd, value), cwd
+                ):
                     decision = "deny"
-                    reason = r"A write destination resolves outside C:\dev."
+                    reason = "A write destination resolves outside the current workspace."
         candidates = re.findall(
             r"""(?ix)
             ["']([A-Z]:[\\/][^"']+)["']
@@ -276,13 +293,13 @@ def hook_decision(payload: dict[str, object]) -> dict[str, str]:
             tool_text,
         )
         absolute_paths = [left or right for left, right in candidates]
-        if cwd and not under_dev(ntpath.abspath(cwd)):
+        if cwd and not under_workspace(ntpath.abspath(cwd), cwd):
             decision = "deny"
-            reason = r"A mutating operation has a working directory outside C:\dev."
+            reason = "A mutating operation has a working directory outside the current workspace."
         for candidate in absolute_paths:
-            if not under_dev(candidate):
+            if not under_workspace(candidate, cwd):
                 decision = "deny"
-                reason = r"A mutating operation referenced a path outside C:\dev."
+                reason = "A mutating operation referenced a path outside the current workspace."
                 break
 
     return {

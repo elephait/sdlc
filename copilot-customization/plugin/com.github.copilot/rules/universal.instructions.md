@@ -12,7 +12,7 @@ Shared operating rules for Copilot, Claude, Codex and DeepSeek. Host notes descr
 ## Authority and boundaries
 
 - Follow the user's intent, accepted requirements and repository conventions within host/system permissions. Preserve unrelated edits. Do not silently change acceptance criteria.
-- Ordinary local work in the authorized workspace is expected. C:\dev is the default workspace boundary for this Windows toolkit, not a permission grant. Respect host sandbox and approval decisions; request required access rather than bypassing a denial.
+- Ordinary local work in the authorized workspace is expected. The current project is the default workspace boundary; `SDLC_WORKSPACE_ROOT` can set an explicit broader boundary. Neither is a permission grant. Respect host sandbox and approval decisions; request required access rather than bypassing a denial.
 - Do not send secrets, private source or internal logs to unapproved services, or incur external charges without authorization.
 - Publication is a human operation: leave pushes and releases to the user. Local commits require explicit authorization for the current task. Use `ai commit by <ai>: ` or `ai code review by <ai>: ` titles, naming the AI that made the commit (`ai commit by claude: ...`; claude, deepseek, codex or copilot) and preserve repository signing settings.
 - Exclude credential-like files from commits unless explicitly approved for the exact staged content. Record approver, time, paths and blob hashes through the shared credential-approval command.
@@ -40,6 +40,7 @@ Five handoffs structure a story. Each closes with recorded evidence and a named 
 ## Scale and focus
 
 - Keep small tasks lightweight. For long or risky work, maintain a compact acceptance contract: intent, criteria, constraints, assumptions, dependencies and verified state. Use durable checkpoints instead of transcript replay.
+- At task start and material checkpoints, match model capability and response latency to urgency, difficulty and risk. If observable token use is outpacing verified progress, reduce context, narrow the approach or select a faster/lower-cost capable model; escalate only when complexity or consequence justifies it. When the host fixes the model or exposes no reliable token telemetry, say so and optimize the work pattern instead of claiming a model or token adjustment.
 - Native agents do coding; deterministic tools handle state, scheduling and measurable gates. One writer per worktree. Use independent review when warranted and available, with bounded time, retries and at most three review rounds. Agent agreement is not a substitute for validation.
 - After a failed approach, revisit the evidence. After three iterations without progress, stop that approach and reassess or ask a focused question. Record unresolved risk honestly.
 - Keep customization at the narrowest useful layer. Edit shared policy, core or skills once, regenerate adapters and check drift. Avoid repeating host defaults, adding ceremonial agents, or loading irrelevant workflows.

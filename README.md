@@ -1,6 +1,6 @@
-# DenisTek SDLC
+# AI Native Software Development
 
-Shared instructions, reusable skills and a lightweight Python control plane for AI-assisted delivery in VS Code Copilot, Claude Code and the Codex app. Native agents do the work; recorded evidence supports acceptance. This is a local Windows pilot, not production certification.
+Shared instructions, reusable skills and a lightweight Python control plane for AI-assisted delivery in VS Code Copilot, Claude Code, Codex app and DeepSeek app's. Native agents do the work; recorded evidence supports acceptance. This is a local Windows pilot, not production certification.
 
 | Layer | Source of truth |
 |---|---|
@@ -18,14 +18,17 @@ Shared instructions, reusable skills and a lightweight Python control plane for 
 For this SDLC project, run one command from any PowerShell directory:
 
 ```powershell
-C:\dev\common\sdlc\onboard.cmd --workspace C:\dev\common\sdlc
+sdlc\aicode.cmd
 ```
 
-This refreshes all four adapters, runs validation, and refreshes shared tracking while preserving the active story. It stops on the first failure. Python 3.11+ must be on PATH. For a first-time story, supply `--story <ID> --intent "<intent>"` (the intent defaults to "Optimize shared agent customization" only for this checkout); an existing different active story is never replaced. The launcher asks which project to track, listing recent projects with the most recently used as the default (press Enter to accept, or type a number or folder name); pass `--workspace <path>` to skip the question. Adapter refresh and validation always run against the SDLC checkout containing the launcher, regardless of your current directory. It uses the latest local sources and does not pull Git changes, install global settings, or launch four agents.
+The menu onboards the latest project with `1`, onboards all Git projects under the current folder with `2`, maps `3` through `10` to older recent projects, verifies the current Git project with `V`, and exits with `E`. `R` shows the latest five reports and `R10` shows ten, so report counts never conflict with numeric project choices. Actions can be chained without punctuation: `1R10V` onboards the latest project, lists ten reports and verifies; `1VR` is also valid. A project number, when present, must come first. After each successful chain, the same menu is shown again until `E` is selected.
 
-To also track every untracked project under `C:\dev\common`, run `C:\dev\common\sdlc\onboard.cmd --all` or `onboard-all.cmd`. A project with an active story is reported as preserved and never rebound; a project without one gets `.sdlc/project.yaml`, a binding and a ledger under `C:\dev\common\.sdlc-ledger`. Preview with `--dry-run`.
+This refreshes all four adapters, installs the latest managed Copilot, Claude, Codex and DeepSeek instructions and skills in the selected project, and refreshes shared tracking while preserving the active story. It does not run the project test suite during routine onboarding. Use menu option `V` or `aicode.cmd --verify` to run the current Git project's commands from `.sdlc/project.yaml`; validation evidence belongs at implementation, ready-to-commit, and review gates. Python 3.11+ must be on PATH. For a first-time story (or an active interactive session), supply `--story <ID> --intent "<intent>"` ; an existing different active story is never replaced.
 
-Add `--reports 5` to that command to finish with the five newest analysis, scorecard, review and handoff artifacts. To look at them alone, run `reports.cmd` or:
+Adapter refresh and validation always run against the SDLC checkout containing the launcher, regardless of your current directory. It uses the latest local sources and does not pull Git changes, install global settings, or launch four agents.
+
+
+Run `aicode.cmd --reports` for the five newest analysis, scorecard, review and handoff artifacts, or pass another count such as `aicode.cmd --reports 12`. To look at them through the underlying script:
 
 ```powershell
 python scripts/reports.py --limit 5
@@ -33,9 +36,9 @@ python scripts/reports.py --limit 5
 
 Reports are read newest first from `core/reports/generated/`, the active story's `reviews/` folder and `md/reviews/`.
 
-For an already-running story, `onboard.cmd --workspace C:\dev\common\sdlc --skip-refresh` refreshes tracking without regenerating shared adapters or running validation. It does not stop sessions, clear events or replace the active story; database initialization and project-recency updates can still occur. A normal full refresh can change shared files that a running host uses, so do that when those agents are idle. `onboard.cmd --all --dry-run` previews the bulk scan without sync, verification or tracking writes.
+For an already-running story, `aicode.cmd --workspace <project> --skip-refresh` refreshes tracking without regenerating shared adapters or running validation. It does not stop sessions, clear events or replace the active story; database initialization and project-recency updates can still occur. A normal full refresh can change shared files that a running host uses, so do that when those agents are idle. `aicode.cmd --all --dry-run` previews the bulk scan under the current folder without sync, verification or tracking writes.
 
-After the one-time host activation below, use this same command for updates, then start a new chat in your chosen host. Selecting another project refreshes its tracking; it still needs the adapter integration described in the setup guides. The launcher does not install customization into that project.
+Use this same command for updates, then start a new chat in your chosen host. Workspace instructions and skills are refreshed automatically without replacing unrelated `AGENTS.md` content or unrelated skills. Host-level plugin activation may still be required where the host does not support project-local activation.
 
 Edit `policy/`, `skills/` and `core/`; host-specific instruction text lives only where a host needs something the others must not receive (currently Copilot and Claude). Generate and verify from this repository with Python 3.11+:
 

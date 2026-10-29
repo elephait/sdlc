@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from collections.abc import Iterator
@@ -8,15 +9,20 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB = PROJECT_ROOT / "data" / "copilot_sdlc.db"
 SCHEMA_PATH = PROJECT_ROOT / "sql" / "schema.sql"
-DEV_ROOT = Path(r"C:\dev")
+WORKSPACE_ROOT = os.environ.get("SDLC_WORKSPACE_ROOT")
+DEV_ROOT = Path(WORKSPACE_ROOT).expanduser().resolve() if WORKSPACE_ROOT else None
 
 
 def require_under_dev(path: Path, label: str) -> Path:
-    resolved = path.resolve()
-    try:
-        resolved.relative_to(DEV_ROOT)
-    except ValueError as error:
-        raise ValueError(f"{label} must be under C:\\dev: {resolved}") from error
+    resolved = path.expanduser().resolve()
+    if DEV_ROOT is not None:
+        try:
+            resolved.relative_to(DEV_ROOT)
+        except ValueError as error:
+            raise ValueError(
+                f"{label} must be under SDLC_WORKSPACE_ROOT "
+                f"({DEV_ROOT}): {resolved}"
+            ) from error
     return resolved
 
 

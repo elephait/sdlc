@@ -25,21 +25,22 @@ class OnboardLauncherTests(unittest.TestCase):
         self.assertNotIn("--story", run.call_args.args[0])
         self.assertIn("not refreshed or validated", output.getvalue())
 
-    def test_refresh_validates_before_tracking_and_preserves_binding(self):
+    def test_refreshes_customization_before_tracking_and_preserves_binding(self):
         with patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
             with redirect_stdout(StringIO()):
                 self.assertEqual(0, launcher.main(["--workspace", str(ROOT)]))
-        self.assertEqual(["scripts/sync-customizations.py", "scripts/verify.py", "scripts/sdlc.py"],
+        self.assertEqual(["scripts/sync-customizations.py", "scripts/sdlc.py"],
                          [call.args[0][1] for call in run.call_args_list])
+        self.assertIn(str(ROOT), run.call_args_list[0].args[0])
         self.assertNotIn("--story", run.call_args_list[-1].args[0])
         self.assertTrue(all(call.kwargs["cwd"] == ROOT for call in run.call_args_list))
 
     def test_failure_stops_before_tracking_and_propagates_exit_code(self):
-        results = [subprocess.CompletedProcess([], 0), subprocess.CompletedProcess([], 7)]
+        results = [subprocess.CompletedProcess([], 7)]
         with patch.object(launcher.subprocess, "run", side_effect=results) as run:
             with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
                 self.assertEqual(7, launcher.main(["--workspace", str(ROOT)]))
-        self.assertEqual(2, run.call_count)
+        self.assertEqual(1, run.call_count)
 
     def test_without_workspace_the_project_is_chosen_before_any_step(self):
         chosen = ROOT.parent / "other-project"
@@ -54,6 +55,18 @@ class OnboardLauncherTests(unittest.TestCase):
         self.assertEqual(str(chosen), tracking[tracking.index("--workspace") + 1])
         # The SDLC-specific default intent is not applied to another project.
         self.assertNotIn("--intent", tracking)
+
+    def test_noninteractive_without_history_defaults_to_current_folder(self):
+        current = ROOT.parent / "current-project"
+        ok = subprocess.CompletedProcess([], 0)
+        with patch.object(launcher, "recent_project_folders", return_value=[]), \
+                patch.object(launcher.Path, "cwd", return_value=current), \
+                patch.object(launcher.sys.stdin, "isatty", return_value=False), \
+                patch.object(launcher.subprocess, "run", return_value=ok) as run:
+            with redirect_stdout(StringIO()):
+                self.assertEqual(0, launcher.main([]))
+        tracking = run.call_args_list[-1].args[0]
+        self.assertEqual(str(current), tracking[tracking.index("--workspace") + 1])
 
     def test_explicit_workspace_skips_the_prompt_and_sdlc_gets_its_intent(self):
         ok = subprocess.CompletedProcess([], 0)

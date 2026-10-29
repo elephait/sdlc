@@ -27,7 +27,6 @@ TERMINAL_OUTCOMES = {
     "SECURITY_STOP",
 }
 TRACKING_STALE_AFTER = timedelta(minutes=15)
-DEFAULT_LEDGER_ROOT = Path(r"C:\dev\common\copilot\sdlc\ledger\stories")
 PROJECT_MARKERS = {
     ".git",
     ".sdlc",
@@ -127,7 +126,7 @@ def onboard_project(
         or project_values.get("repository")
         or active.get("repository")
     )
-    resolved_story = story_id or active.get("storyId")
+    resolved_story = story_id or active.get("storyId") or project_values.get("storyId")
     if not resolved_repository:
         raise ValueError(
             "Repository is required when the workspace has no existing "
@@ -191,10 +190,15 @@ def onboard_project(
                     resolved_workspace / workspace_relative_ledger
                 ).resolve()
                 active_ledger_changed = True
+            if not configured_ledger.exists() and not active_ledger_changed:
+                resolved_ledger = (
+                    resolved_workspace / ".sdlc" / "ledger" / resolved_story
+                ).resolve()
+                active_ledger_changed = True
     else:
         active_ledger_changed = False
         root = require_under_dev(
-            ledger_root or DEFAULT_LEDGER_ROOT,
+            ledger_root or resolved_workspace / ".sdlc" / "ledger",
             "Ledger root",
         )
         resolved_ledger = root / resolved_project / resolved_story
@@ -243,13 +247,19 @@ def onboard_project(
             story_status = "created"
 
     sdlc_root.mkdir(parents=True, exist_ok=True)
-    project_status = "updated" if project_relocated else "preserved"
+    replacements = {}
     if project_relocated:
-        replacements = {"workspaceRoot": str(resolved_workspace)}
-        configured_project_ledger = project_values.get("ledgerPath")
-        if configured_project_ledger and active:
-            replacements["ledgerPath"] = str(resolved_ledger)
+        replacements["workspaceRoot"] = str(resolved_workspace)
+    configured_project_ledger = project_values.get("ledgerPath")
+    if (
+        configured_project_ledger
+        and Path(configured_project_ledger).resolve() != resolved_ledger
+    ):
+        replacements["ledgerPath"] = str(resolved_ledger)
+    project_status = "preserved"
+    if replacements:
         _replace_project_values(project_path, replacements)
+        project_status = "updated"
     if not project_path.exists():
         _atomic_write(
             project_path,
@@ -394,7 +404,9 @@ def _install_tracking_hooks(workspace: Path) -> str:
     return "updated" if changed else "preserved"
 
 
-def discover_project_folders(search_root: Path = DEV_ROOT) -> list[Path]:
+def discover_project_folders(search_root: Path | None = DEV_ROOT) -> list[Path]:
+    if search_root is None:
+        search_root = Path.cwd()
     root = require_under_dev(search_root, "Project search root")
     projects: list[Path] = []
     for current, directories, files in os.walk(root):
@@ -431,7 +443,7 @@ def record_project_use(
 def recent_project_folders(
     discovered: list[Path],
     db_path: Path = DEFAULT_DB,
-    limit: int = 5,
+    limit: int = 10,
 ) -> list[Path]:
     initialize(db_path)
     with database(db_path) as connection:
@@ -455,61 +467,53 @@ def recent_project_folders(
 
 def select_project_folder(
     db_path: Path = DEFAULT_DB,
-    search_root: Path = DEV_ROOT,
+    search_root: Path | None = DEV_ROOT,
+    current_folder: Path | None = None,
     input_fn: Any = input,
     output_fn: Any = print,
 ) -> Path:
-    discovered = discover_project_folders(search_root)
-    if not discovered:
-        raise ValueError(f"No project folders found under {search_root}.")
-    recent = recent_project_folders(discovered, db_path)
-    output_fn("Recently used projects:")
-    for index, path in enumerate(recent, start=1):
-        suffix = " [default]" if index == 1 else ""
-        output_fn(f"  {index}. {path}{suffix}")
-    selection = input_fn(
-        f"Project folder name under {search_root} or recent number [1]: "
-    ).strip()
+    current = (current_folder or Path.cwd()).resolve()
+    recent = recent_project_folders([], db_path, limit=10)
+    if recent:
+        choices = [recent[0]]
+        if current != recent[0]:
+            choices.append(current)
+        choices.extend(
+            path for path in recent[1:] if path != current
+        )
+        output_fn("Recently onboarded projects:")
+        for index, path in enumerate(choices, start=1):
+            labels = []
+            if index == 1:
+                labels.append("default")
+            if path == current:
+                labels.append("current")
+            suffix = f" [{', '.join(labels)}]" if labels else ""
+            output_fn(f"  {index}. {path}{suffix}")
+        output_fn("  Or enter a project directory path.")
+        selection = input_fn(
+            "Project number or directory path [1]: "
+        ).strip()
+    else:
+        choices = [current]
+        output_fn(f"No previously onboarded projects. Current folder: {current} [default]")
+        output_fn("  Or enter a project directory path.")
+        selection = input_fn("Project number or directory path [1]: ").strip()
     if not selection:
-        return recent[0]
+        return choices[0]
     if selection.isdigit():
         index = int(selection)
-        if 1 <= index <= len(recent):
-            return recent[index - 1]
-        raise ValueError(f"Recent project number is out of range: {selection}")
+        if 1 <= index <= len(choices):
+            return choices[index - 1]
+        raise ValueError(f"Project number is out of range: {selection}")
 
-    candidate = Path(selection)
-    if candidate.is_absolute():
-        resolved = require_under_dev(candidate, "Workspace")
-        if not resolved.is_dir():
-            raise ValueError(f"Project folder does not exist: {resolved}")
-        return resolved
-
-    exact = [
-        path for path in discovered if path.name.lower() == selection.lower()
-    ]
-    matches = exact or [
-        path for path in discovered if selection.lower() in path.name.lower()
-    ]
-    if not matches:
-        raise ValueError(
-            f"No project folder matching {selection!r} was found under "
-            f"{search_root}."
-        )
-    if len(matches) == 1:
-        return matches[0]
-    output_fn(f"Multiple projects match {selection!r}:")
-    for index, path in enumerate(matches, start=1):
-        output_fn(f"  {index}. {path}")
-    match_selection = input_fn("Select project number [1]: ").strip()
-    if not match_selection:
-        return matches[0]
-    if not match_selection.isdigit():
-        raise ValueError("Project selection must be a number.")
-    index = int(match_selection)
-    if not 1 <= index <= len(matches):
-        raise ValueError(f"Project number is out of range: {match_selection}")
-    return matches[index - 1]
+    candidate = Path(selection).expanduser()
+    if not candidate.is_absolute():
+        candidate = current / candidate
+    resolved = require_under_dev(candidate, "Workspace")
+    if not resolved.is_dir():
+        raise ValueError(f"Project folder does not exist: {resolved}")
+    return resolved
 
 
 def _project_activity(path: Path) -> float:
@@ -528,7 +532,7 @@ def _read_project_values(path: Path) -> dict[str, str]:
     text = path.read_text(encoding="utf-8-sig")
     values: dict[str, str] = {}
     for key in ("project", "repository", "workspaceRoot", "storyId", "ledgerPath"):
-        match = re.search(rf"(?m)^{key}:\s*(.+?)\s*$", text)
+        match = re.search(rf"(?m)^\s*{key}:\s*(.+?)\s*$", text)
         if match:
             values[key] = match.group(1).strip().strip("'\"")
     return values
@@ -539,8 +543,10 @@ def _replace_project_values(path: Path, replacements: dict[str, str]) -> None:
     updated = text
     for key, value in replacements.items():
         updated, count = re.subn(
-            rf"(?m)^{re.escape(key)}:\s*.+?$",
-            lambda _: f"{key}: {_yaml_scalar(value)}",
+            rf"(?m)^(\s*){re.escape(key)}:\s*.+?$",
+            lambda match: (
+                f"{match.group(1)}{key}: {_yaml_scalar(value)}"
+            ),
             updated,
         )
         if count != 1:
@@ -1382,8 +1388,7 @@ _CUSTOMIZATION_PREFIXES = ("policy/", "skills/", "core/", "scripts/")
 _CUSTOMIZATION_FILES = {
     "AGENTS.md",
     "CLAUDE.md",
-    "onboard.cmd",
-    "onboard-all.cmd",
+    "aicode.cmd",
     "reports.cmd",
 }
 

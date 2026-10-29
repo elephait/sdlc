@@ -9,15 +9,15 @@ The root `AGENTS.md` is generated from `policy/universal.md` and `policy/harness
 One-command refresh and onboarding for SDLC itself, from any directory:
 
 ```powershell
-C:\dev\common\sdlc\onboard.cmd --workspace C:\dev\common\sdlc
+C:\dev\common\sdlc\aicode.cmd --workspace C:\dev\common\sdlc
 ```
 
-The explicit workspace selects SDLC even when another project was used most recently. Without it the launcher offers the project picker (or chooses the recent default without a terminal). It generates all four adapters, validates them, and refreshes tracking without changing the active story. It stops on failure and does not launch or stop agents. Plugin enablement in Copilot/Claude is still a one-time host setup. Use a new chat to load updated instructions when ready; the command does not restart a current chat.
+The explicit workspace selects SDLC even when another project was used most recently. Without it the launcher offers the project menu. It generates all four adapters and refreshes tracking without changing the active story or running project tests. Use `aicode.cmd --verify` when validation is needed. It stops on failure and does not launch or stop agents. Plugin enablement in Copilot/Claude is still a one-time host setup. Use a new chat to load updated instructions when ready; the command does not restart a current chat.
 
 If tracking is already running and you only want to refresh its registration:
 
 ```powershell
-C:\dev\common\sdlc\onboard.cmd --workspace C:\dev\common\sdlc --skip-refresh
+C:\dev\common\sdlc\aicode.cmd --workspace C:\dev\common\sdlc --skip-refresh
 ```
 
 This skips adapter generation and validation. It preserves the current binding, session state, events, gates and installed workspace hooks. It may initialize missing database schema or update project-recency metadata, so it is not a read-only command. A conflicting `--story` fails rather than rebinding the project. The default full refresh also preserves tracking records, but can rewrite changed shared instruction/skill/hook files; defer that refresh until agents using those files are idle. No atomic live upgrade of a running host is promised.
@@ -78,7 +78,7 @@ This command commits the current index and writes a handoff report. It does not 
 
 ## Use in another repository
 
-Merge a short instruction into that project's existing `AGENTS.md`: “Read `C:/dev/common/sdlc/policy/universal.md` and `C:/dev/common/sdlc/policy/harness-notes.md`; read research.md only when researching external claims.” Preserve the project's own instructions. Copy the desired skill folders from `skills/` into that project's `.agents/skills/` (including metadata and references), and refresh them after source changes. Do not replace unrelated skills or instructions. Use the absolute CLI wrapper path and that project's `--workspace`, repository and story identity.
+Run `aicode.cmd` and select the project. Onboarding refreshes a managed block in that project's `AGENTS.md` and the shared skill folders in `.agents/skills/` while preserving unrelated instructions and skills. Use the CLI wrapper from this checkout with that project's `--workspace`, repository and story identity.
 
 ## Verify host activation
 

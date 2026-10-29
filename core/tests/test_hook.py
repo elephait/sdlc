@@ -5,6 +5,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,9 +46,7 @@ class HookContractTests(unittest.TestCase):
             {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": "allow",
-                "permissionDecisionReason": (
-                    r"Allowed by the C:\dev universal policy."
-                ),
+                "permissionDecisionReason": "Allowed by the current workspace policy.",
             },
             output["hookSpecificOutput"],
         )
@@ -115,7 +114,7 @@ class ScopeDecisionTests(unittest.TestCase):
             "file_path": r"C:\dev\x\guide.md", "content": r"Example D:\outside\file.txt"
         }))
 
-    def test_relative_write_cannot_escape_dev(self) -> None:
+    def test_relative_write_cannot_escape_workspace(self) -> None:
         self.assertEqual("deny", self.decide("Write", {"file_path": r"..\..\outside.txt"}))
 
     def test_repository_does_not_duplicate_plugin_tracking(self) -> None:
@@ -145,11 +144,29 @@ class ScopeDecisionTests(unittest.TestCase):
                 title,
             )
 
-    def test_write_outside_dev_root_is_denied(self) -> None:
+    def test_write_outside_workspace_is_denied(self) -> None:
         self.assertEqual(
             "deny",
             self.decide("Write", {"file_path": r"D:\other\a.txt", "content": ""}),
         )
+
+    def test_configured_workspace_root_is_portable(self) -> None:
+        with patch.dict(
+            scope_hook.os.environ,
+            {"SDLC_WORKSPACE_ROOT": r"D:\portable-projects"},
+        ):
+            self.assertTrue(
+                scope_hook.under_workspace(
+                    r"D:\portable-projects\app\file.txt",
+                    r"D:\portable-projects\app",
+                )
+            )
+            self.assertFalse(
+                scope_hook.under_workspace(
+                    r"C:\dev\app\file.txt",
+                    r"D:\portable-projects\app",
+                )
+            )
 
     def test_git_exe_is_judged_like_git(self) -> None:
         self.assertEqual(

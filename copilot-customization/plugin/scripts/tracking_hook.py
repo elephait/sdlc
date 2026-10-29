@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DEV_ROOT = Path(r"C:\dev")
+WORKSPACE_ROOT = os.environ.get("SDLC_WORKSPACE_ROOT")
 
 try:  # Windows
     import msvcrt
@@ -92,11 +93,16 @@ def find_active_story(cwd: Path) -> Path | None:
 
 
 def require_under_dev(path: Path, label: str) -> Path:
-    resolved = path.resolve()
-    try:
-        resolved.relative_to(DEV_ROOT)
-    except ValueError as error:
-        raise ValueError(f"{label} must be under C:\\dev: {resolved}") from error
+    resolved = path.expanduser().resolve()
+    if WORKSPACE_ROOT:
+        boundary = Path(WORKSPACE_ROOT).expanduser().resolve()
+        try:
+            resolved.relative_to(boundary)
+        except ValueError as error:
+            raise ValueError(
+                f"{label} must be under SDLC_WORKSPACE_ROOT "
+                f"({boundary}): {resolved}"
+            ) from error
     return resolved
 
 

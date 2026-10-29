@@ -9,7 +9,7 @@ Open `C:\dev\common\sdlc` as the session workspace, then start a new chat. A ses
 One command refreshes every adapter, validates, and refreshes tracking without changing the active story. It works from any directory:
 
 ```powershell
-C:\dev\common\sdlc\onboard.cmd --workspace C:\dev\common\sdlc
+C:\dev\common\sdlc\aicode.cmd --workspace C:\dev\common\sdlc
 ```
 
 Pass `--workspace` explicitly. Without a terminal the project picker takes the most recently used project, which may not be this checkout; the launcher prints the project it chose.
@@ -17,7 +17,7 @@ Pass `--workspace` explicitly. Without a terminal the project picker takes the m
 To refresh and track every untracked project under `C:\dev\common` as well, add `--all`; tracked projects are reported and left untouched:
 
 ```powershell
-C:\dev\common\sdlc\onboard.cmd --all
+C:\dev\common\sdlc\aicode.cmd --all
 ```
 
 Python 3.11+ is required. From the repository:
@@ -30,7 +30,7 @@ python scripts/sdlc.py --help
 python scripts/reports.py --limit 5
 ```
 
-`reports.py` lists the newest scorecards, failure reports, commit analysis and review write-ups; `onboard.cmd --all --reports 5` does the same at the end of a full refresh.
+`reports.py` lists the newest scorecards, failure reports, commit analysis and review write-ups; `aicode.cmd --reports` shows the latest five.
 
 The CLI works from any directory by absolute path. Optional install: `python -m pip install --no-deps -e C:\dev\common\sdlc\core`.
 
@@ -66,7 +66,7 @@ Generated skills live in `.agents/skills/`: `tracked-story` and `distributed-ser
 
 ## Use in another repository
 
-Add one line to that project's `AGENTS.md`: read `C:/dev/common/sdlc/policy/universal.md`, `C:/dev/common/sdlc/policy/harness-notes.md`, and `policy/research.md` only when researching external claims. Keep the project's own instructions. Copy the skill folders you need into its `.agents/skills/`, and use the absolute CLI path with that project's workspace, repository and story identity.
+Run `aicode.cmd` and select the project. Onboarding refreshes a managed block in that project's `AGENTS.md` and the shared skill folders in `.agents/skills/` while preserving unrelated instructions and skills. Use the CLI wrapper from this checkout with that project's workspace, repository and story identity.
 
 ## Verify activation
 

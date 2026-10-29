@@ -10,7 +10,7 @@ VS Code Copilot adapter for the shared SDLC workflow. It contains only what is s
 
 ## Use
 
-- Install the plugin in VS Code Copilot from `plugin/`, then start a new session.
+- Run the root `aicode.cmd` for a project to install its current workspace instructions and skills, then start a new session. The plugin remains available for hosts that use plugin-level activation.
 - Workspace tracking hooks live at `.github/hooks/copilot-sdlc.json` in the tracked workspace; `copilot-sdlc project-onboard --tracking-hooks copilot-workspace` writes them.
 - Operation, CLI and architecture: [core/README.md](../core/README.md).
 

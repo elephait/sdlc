@@ -11,7 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core" / "src"))
 
 from copilot_customization.db import DEFAULT_DB  # noqa: E402
-from copilot_customization.service import select_project_folder  # noqa: E402
+from copilot_customization.service import (  # noqa: E402
+    recent_project_folders,
+    select_project_folder,
+)
 
 SDLC_INTENT = "Optimize shared agent customization"
 
@@ -25,17 +28,14 @@ def choose_workspace(workspace: Path | None, db: Path) -> Path:
     if workspace:
         return workspace.resolve()
     if not sys.stdin.isatty():
-        from copilot_customization.service import (
-            discover_project_folders,
-            recent_project_folders,
-        )
-
-        recent = recent_project_folders(discover_project_folders(), db)
+        recent = recent_project_folders([], db, limit=10)
         if not recent:
-            raise ValueError("No project folders found; pass --workspace.")
-        print(f"No terminal; using the default project: {recent[0]}")
+            current = Path.cwd().resolve()
+            print(f"No terminal or previous project; using current folder: {current}")
+            return current
+        print(f"No terminal; using the most recently onboarded project: {recent[0]}")
         return recent[0]
-    return select_project_folder(db)
+    return select_project_folder(db, current_folder=Path.cwd())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -49,7 +49,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--intent",
                         help="Intent used only when creating the story in the local database "
                              f"(default for this checkout: {SDLC_INTENT!r}).")
+    parser.add_argument(
+        "--reports",
+        nargs="?",
+        const=5,
+        type=int,
+        metavar="N",
+        help="After onboarding, show recent reports; defaults to 5.",
+    )
     args = parser.parse_args(argv)
+    if args.reports is not None and args.reports < 0:
+        parser.error("--reports must be a non-negative integer")
     try:
         workspace = choose_workspace(args.workspace, args.db)
     except (ValueError, OSError) as error:
@@ -64,8 +74,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.story:
         onboard.extend(["--story", args.story])
     steps = [
-        ("Refresh Copilot, Claude, Codex and DeepSeek customizations", ["scripts/sync-customizations.py"]),
-        ("Validate shared code and generated customizations", ["scripts/verify.py"]),
+        (
+            "Refresh and install Copilot, Claude, Codex and DeepSeek customizations",
+            ["scripts/sync-customizations.py", "--workspace", str(workspace)],
+        ),
         (f"Refresh SDLC tracking for {workspace.name}", onboard),
     ]
     if args.skip_refresh:
@@ -79,8 +91,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.skip_refresh:
         print(f"\nTracking refreshed for {workspace}; adapters were not refreshed or validated. Existing sessions continue.")
     else:
-        print(f"\nSDLC customization and tracking are ready for {workspace}. Use a new chat to load updated instructions.")
+        print(f"\nSDLC customization and tracking are ready for {workspace}. Use V or --verify when validation is needed.")
         print("Copilot/Claude plugin enablement remains a one-time host setup; see README.md.")
+    if args.reports is not None:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/reports.py",
+                "--limit",
+                str(args.reports),
+            ],
+            cwd=ROOT,
+        )
+        if completed.returncode:
+            return completed.returncode
     return 0
 
 

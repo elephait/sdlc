@@ -48,7 +48,7 @@ def kind_of(path: Path) -> str:
     return path.suffix.lstrip(".") or "file"
 
 
-def collect(sources: list[Path | None], limit: int = 10) -> list[Path]:
+def collect(sources: list[Path | None], limit: int = 5) -> list[Path]:
     found: dict[Path, Path] = {}
     for source in sources:
         if source is None or not source.is_dir():
@@ -71,7 +71,7 @@ def describe(path: Path) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--limit", type=int, default=10, help="Rows to show; 0 for all.")
+    parser.add_argument("--limit", type=int, default=5, help="Rows to show; 0 for all.")
     parser.add_argument("--ledger", type=Path, help="Override the active story ledger.")
     args = parser.parse_args(argv)
 

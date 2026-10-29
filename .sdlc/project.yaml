@@ -1,7 +1,7 @@
 schemaVersion: 1
 project: sdlc
 repository: elephait/sdlc
-workspaceRoot: 'C:\dev\common\sdlc'
+workspaceRoot: 'C:\dev\common\elephait\sdlc'
 
 technology:
   language: python
@@ -26,4 +26,4 @@ git:
 
 tracking:
   storyId: SDLC-001
-  ledgerPath: 'C:\dev\common\copilot\sdlc\ledger\stories\sdlc\SDLC-001'
+  ledgerPath: 'C:\dev\common\elephait\sdlc\.sdlc\ledger\sdlc\SDLC-001'

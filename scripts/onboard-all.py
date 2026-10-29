@@ -3,8 +3,7 @@
 
 Default behaviour, in order:
   1. regenerate the Copilot, Claude, Codex and DeepSeek payloads from shared sources
-  2. run the local verification suite
-  3. scan the workspace root for projects and add tracking where none exists
+  2. scan the workspace root for projects and add tracking where none exists
 
 An existing ``.sdlc/active-story.json`` is never rewritten and never rebound:
 the project is reported as preserved and skipped. Run with ``--dry-run`` to see
@@ -30,15 +29,6 @@ sys.path.insert(0, str(REPO / "core" / "src"))
 from copilot_customization.db import DEFAULT_DB  # noqa: E402
 from copilot_customization.service import onboard_project  # noqa: E402
 
-PROJECT_MARKERS = (
-    ".git",
-    "pyproject.toml",
-    "package.json",
-    "pom.xml",
-    "build.gradle",
-    "Cargo.toml",
-    "go.mod",
-)
 SKIP_NAMES = {
     ".git",
     ".sdlc-test-work",
@@ -59,7 +49,7 @@ def run(label: str, command: list[str]) -> int:
 
 
 def is_project(path: Path) -> bool:
-    return path.is_dir() and any((path / marker).exists() for marker in PROJECT_MARKERS)
+    return path.is_dir() and (path / ".git").exists()
 
 
 def repository_name(path: Path) -> str:
@@ -106,15 +96,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Accepted when called through `onboard.cmd --all`; it is already the default here.",
+        help="Accepted when called through `aicode.cmd --all`; it is already the default here.",
     )
     parser.add_argument("--dry-run", action="store_true", help="Report the plan only.")
     parser.add_argument(
         "--reports",
+        nargs="?",
+        const=5,
         type=int,
         metavar="N",
         default=0,
-        help="After onboarding, show the N most recent analysis reports.",
+        help="After onboarding, show recent reports; defaults to 5.",
     )
     parser.add_argument("--skip-refresh", action="store_true", help="Skip sync and verify.")
     parser.add_argument("--skip-tracking", action="store_true", help="Skip the project scan.")
@@ -122,9 +114,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.skip_refresh and not args.dry_run:
         code = run("Refresh all host payloads", ["scripts/sync-customizations.py"])
-        if code:
-            return code
-        code = run("Validate shared code and generated payloads", ["scripts/verify.py"])
         if code:
             return code
 

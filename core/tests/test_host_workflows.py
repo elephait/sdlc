@@ -45,6 +45,38 @@ class HostWorkflowTests(unittest.TestCase):
         self.onboard()
         self.assertEqual(before, hook.read_bytes())
 
+    def test_onboarding_restores_active_story_from_project_config(self) -> None:
+        first = self.onboard()
+        active = self.workspace / ".sdlc" / "active-story.json"
+        active.unlink()
+
+        restored = onboard_project(self.workspace, db_path=self.db)
+
+        self.assertEqual(first["storyId"], restored["storyId"])
+        self.assertEqual("created", restored["status"]["activeStory"])
+        self.assertTrue(active.is_file())
+
+    def test_onboarding_rehomes_stale_machine_paths_without_active_story(self) -> None:
+        self.onboard()
+        sdlc = self.workspace / ".sdlc"
+        (sdlc / "active-story.json").unlink()
+        project = sdlc / "project.yaml"
+        text = project.read_text(encoding="utf-8")
+        text = text.replace(
+            f"workspaceRoot: '{self.workspace}'",
+            r"workspaceRoot: 'Z:\missing\old-project'",
+        ).replace(
+            str(self.workspace / "ledger"),
+            r"Z:\missing\old-ledger",
+        )
+        project.write_text(text, encoding="utf-8")
+
+        restored = onboard_project(self.workspace, db_path=self.db)
+        updated = project.read_text(encoding="utf-8")
+
+        self.assertIn(f"workspaceRoot: '{self.workspace}'", updated)
+        self.assertIn(restored["ledgerPath"], updated)
+
     def test_cli_and_hook_run_with_isolated_tracking_from_another_cwd(self) -> None:
         result = self.onboard()
         session = subprocess.run(
