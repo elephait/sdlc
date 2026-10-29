@@ -7,6 +7,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
+from copilot_customization.cli import brief_gates
 from copilot_customization.db import database
 from copilot_customization.service import (
     commit_ready,
@@ -134,6 +135,42 @@ class GateWorkflowTests(unittest.TestCase):
             self.workspace, "ai code review: close", "test", "summary", [], self.db
         )
         self.assertEqual({"docs": "passed", "review": "passed"}, result["gates"])
+
+    def test_telemetry_finding_is_repeated_while_still_unmeasured(self) -> None:
+        for name in ("analysis", "implementation"):
+            self.gate(name)
+        commit_ready(self.workspace, "ai commit: first", "test", "summary", [], self.db)
+        self.write("README.md", "# Fixture\n\nRefined.\n")
+        self.git("add", "README.md")
+        self.write(".sdlc/review.md", "# Review\n")
+        self.gate("review", artifact=".sdlc/review.md")
+        self.gate("docs", artifact="README.md")
+        second = commit_ready(
+            self.workspace, "ai code review: close", "test", "summary", [], self.db
+        )
+        self.assertTrue(
+            any("telemetry" in f for f in second["analysis"]["importantFindings"])
+        )
+
+    def test_run_verify_pins_the_staged_tree(self) -> None:
+        scripts_dir = self.workspace / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "verify.py").write_text("print('Ran 3 tests')\n", encoding="utf-8")
+        result = run_verify(self.workspace)
+        tree = self.git("write-tree").stdout.strip()
+        self.assertEqual(tree, result["treeHash"])
+        self.git("add", "analysis.md")
+        with self.assertRaisesRegex(ValueError, "staged tree changed after verify"):
+            self.gate("implementation", details={"verification": result})
+
+    def test_gate_status_display_drops_the_output_tail(self) -> None:
+        self.gate(
+            "implementation",
+            details={"verification": {"result": "passed", "outputTail": "x\n" * 40}},
+        )
+        shown = brief_gates(gates_for_story("TEST-001", self.db))["implementation"]
+        self.assertNotIn("outputTail", shown["details_json"])
+        self.assertIn("passed", shown["details_json"])
 
     def test_customization_change_requires_customization_gate(self) -> None:
         (self.workspace / "policy").mkdir()

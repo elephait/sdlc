@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -30,6 +31,26 @@ from .service import (
     stop_session,
     tracking_report,
 )
+
+
+def brief_gates(gates: dict[str, dict]) -> dict[str, dict]:
+    """Gate rows for display: keep the verification result, drop its output tail."""
+    brief: dict[str, dict] = {}
+    for name, row in gates.items():
+        row = dict(row)
+        raw = row.get("details_json")
+        if raw:
+            try:
+                details = json.loads(raw)
+            except json.JSONDecodeError:
+                details = None
+            if isinstance(details, dict) and isinstance(
+                details.get("verification"), dict
+            ):
+                details["verification"].pop("outputTail", None)
+                row["details_json"] = json.dumps(details, sort_keys=True)
+        brief[name] = row
+    return brief
 
 
 def parser() -> argparse.ArgumentParser:
@@ -162,7 +183,8 @@ def parser() -> argparse.ArgumentParser:
     gate.add_argument("--approved-by")
     gate.add_argument(
         "--recorded-by",
-        help="Host or agent that recorded the gate; provenance, not approval.",
+        help="Host or agent that recorded the gate; provenance, not approval. "
+        "Defaults to $SDLC_AI_NAME.",
     )
     gate.add_argument(
         "--run-verify",
@@ -364,6 +386,14 @@ def main(argv: list[str] | None = None) -> int:
             workspace = args.workspace or select_project_folder(args.db)
             details = json.loads(args.details_json) if args.details_json else None
             evidence = args.evidence
+            recorded_by = args.recorded_by or os.environ.get("SDLC_AI_NAME")
+            if (
+                args.run_verify
+                and args.status in {"passed", "waived"}
+                and not (args.approved_by or "").strip()
+            ):
+                # Fail before the suite runs, not after it.
+                raise ValueError("A passed or waived gate requires --approved-by.")
             if args.run_verify:
                 verification = run_verify(workspace)
                 details = {**(details or {}), "verification": verification}
@@ -387,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
                         status=args.status,
                         evidence=evidence or "",
                         approved_by=args.approved_by,
-                        recorded_by=args.recorded_by,
+                        recorded_by=recorded_by,
                         artifact=args.artifact,
                         session_id=args.session,
                         details=details,
@@ -399,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "gate-status":
             print(
                 json.dumps(
-                    gates_for_story(args.story, args.db),
+                    brief_gates(gates_for_story(args.story, args.db)),
                     indent=2,
                 )
             )

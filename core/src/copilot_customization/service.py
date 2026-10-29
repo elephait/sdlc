@@ -907,11 +907,6 @@ def _write_commit_analysis(
     )
     metrics["sessionReports"] = session_report_count
     incremental_metrics["sessionReports"] = incremental_session_reports
-    if metrics.get("sessions") == 0 and metrics.get("events") == 0:
-        derived_findings.append(
-            "No session or event telemetry was recorded for this story; "
-            "duration, retries and cost cannot be measured."
-        )
     previous_findings = set(previous.get("importantFindings", [])) if previous else set()
     combined = list(
         dict.fromkeys(
@@ -923,6 +918,18 @@ def _write_commit_analysis(
         if previous is None
         else [finding for finding in combined if finding not in previous_findings]
     )
+    # Stated for every commit that has no telemetry of its own. It sits after
+    # the de-duplication on purpose: a finding already reported on an earlier
+    # commit is still true here, and dropping it would make an unmeasured
+    # commit look measured.
+    if (
+        incremental_metrics.get("sessions") == 0
+        and incremental_metrics.get("events") == 0
+    ):
+        important_findings.append(
+            "No session or event telemetry was recorded for this commit; "
+            "duration, retries and cost cannot be measured."
+        )
     comparison = _metric_comparison(previous, metrics)
     generated_at = now()
     report = {
@@ -1450,6 +1457,7 @@ def run_verify(workspace: Path) -> dict[str, Any]:
             "verify.py runs against the working tree; commit, stash or revert "
             "unstaged changes before using --run-verify."
         )
+    tree_before = _staged_tree(root)
     try:
         completed = subprocess.run(
             [sys.executable, str(script)],
@@ -1462,12 +1470,18 @@ def run_verify(workspace: Path) -> dict[str, Any]:
         raise ValueError(
             f"verify.py exceeded {VERIFY_TIMEOUT_SECONDS}s; gate not recorded."
         ) from error
+    if _staged_tree(root) != tree_before:
+        raise ValueError(
+            "The staged tree changed while verify.py ran, so its result does "
+            "not describe the commit. Stage first, then retry."
+        )
     output = (completed.stdout or "") + (completed.stderr or "")
     match = re.search(r"Ran (\d+) tests?", output)
     return {
         "command": "python scripts/verify.py",
         "exitCode": completed.returncode,
         "testCount": int(match.group(1)) if match else None,
+        "treeHash": tree_before,
         "result": "passed" if completed.returncode == 0 else "failed",
         "outputTail": "\n".join(output.splitlines()[-40:]),
     }
@@ -1539,6 +1553,15 @@ def record_gate(
     ledger = _active_ledger(active, resolved_workspace)
     initialize(db_path)
     head_commit, staged_tree = _gate_baseline(resolved_workspace)
+    verification = (details or {}).get("verification")
+    verified_tree = (
+        verification.get("treeHash") if isinstance(verification, dict) else None
+    )
+    if verified_tree and staged_tree and verified_tree != staged_tree:
+        raise ValueError(
+            "The staged tree changed after verify.py ran; re-run the gate "
+            "with --run-verify so the result describes the staged content."
+        )
     if gate not in TREE_BOUND_GATES:
         staged_tree = None
 
