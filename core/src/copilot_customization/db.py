@@ -63,6 +63,8 @@ def initialize(path: Path = DEFAULT_DB) -> None:
         # the exact repository state it approved.
         _ensure_column(connection, "gates", "head_commit", "TEXT")
         _ensure_column(connection, "gates", "tree_hash", "TEXT")
+        # Provenance: the approver and the host that actually recorded the gate.
+        _ensure_column(connection, "gates", "recorded_by", "TEXT")
 
 
 def _ensure_column(

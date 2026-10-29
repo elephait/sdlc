@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS gates (
     artifact_sha256 TEXT,
     evidence TEXT NOT NULL,
     approved_by TEXT NOT NULL,
+    recorded_by TEXT,
     recorded_at TEXT NOT NULL,
     head_commit TEXT,
     tree_hash TEXT,

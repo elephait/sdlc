@@ -16,7 +16,7 @@ From this folder, `python -m copilot_customization.cli` works without installing
 |---|---|
 | `project-onboard` | Create or refresh `.sdlc/` metadata; use `--tracking-hooks copilot-workspace` only without plugin tracking. Default `none` installs no hooks. |
 | `tracking-report` | Capture health first; exit code `2` when evidence is missing or older than 15 minutes (`--allow-stale` to override). |
-| `gate` | Record a handoff gate (`analysis`, `implementation`, `review`, `customization`, `docs`) with its artifact, evidence and named approver. `gate-status` shows the latest state. `implementation` and `customization` bind to the staged tree; `analysis` is story-level. |
+| `gate` | Record a handoff gate (`analysis`, `implementation`, `review`, `customization`, `docs`) with its artifact, evidence, named approver and optional recording host. `--run-verify` runs `scripts/verify.py` first and stores the exit code, test count and result (refuses unstaged changes); `gate-status` shows the latest state. `implementation` and `customization` bind to the staged tree; `analysis` is story-level. |
 | `commit-ready` | Validate commit policy and the required gates (all must postdate HEAD; `implementation` and `customization` must also match the staged tree), make one local commit, write a hash-named handoff report. Takes `--co-author` (default `$SDLC_CO_AUTHOR`, otherwise no trailer) and `--ai-name` (default `$SDLC_AI_NAME`, then the co-author name, then `--prepared-by`) for the title. |
 | `event`, `decision`, `resolve-event`, `session-*`, `scorecard`, `compact`, `bottlenecks` | Record and analyze evidence; run `--help` for flags. `session-start --host` attributes a session to a harness. |
 

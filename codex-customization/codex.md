@@ -60,10 +60,10 @@ The newer shared core requires recorded gates. Inspect them before a commit:
 python scripts/sdlc.py gate-status --story $sdlcStory
 ```
 
-An implementation commit needs `analysis` and `implementation`; a review-fix commit needs `review` and `docs`. Changes to customization (including `scripts/` and the root launchers) also require `customization`. Record each gate only after its evidence and approval exist, using the actual approver rather than an assumed human approval. Stage the reviewed files before recording `implementation` or `customization`: they bind to the staged tree and to the current HEAD, so they must be re-recorded after any further staging or commit. `analysis` is story-level and stays valid. For example (replace the placeholders):
+An implementation commit needs `analysis` and `implementation`; a review-fix commit needs `review` and `docs`. Changes to customization (including `scripts/` and the root launchers) also require `customization`. Record each gate only after its evidence and approval exist, using the actual approver rather than an assumed human approval, and pass `--recorded-by codex` so provenance is separate from approval. Stage the reviewed files before recording `implementation` or `customization`: they bind to the staged tree and to the current HEAD, so they must be re-recorded after any further staging or commit. `analysis` is story-level and stays valid. `gate --run-verify` runs `scripts/verify.py` and stores the exit code, test count and result; it refuses when the working tree has unstaged changes. For example (replace the placeholders):
 
 ```powershell
-python scripts/sdlc.py gate --workspace C:\dev\common\sdlc --story $sdlcStory --gate review --artifact "<review-file>" --evidence "<checks and findings reviewed>" --approved-by "<actual approver>"
+python scripts/sdlc.py gate --workspace C:\dev\common\sdlc --story $sdlcStory --gate review --artifact "<review-file>" --evidence "<checks and findings reviewed>" --approved-by "<actual approver>" --recorded-by codex
 ```
 
 See [the tracked-story workflow](../skills/tracked-story/SKILL.md) for all gates. A gate record does not itself establish user authorization to commit.

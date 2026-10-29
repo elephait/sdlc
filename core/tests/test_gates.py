@@ -14,6 +14,7 @@ from copilot_customization.service import (
     onboard_project,
     record_gate,
     required_gates,
+    run_verify,
     start_session,
     stop_session,
 )
@@ -101,6 +102,12 @@ class GateWorkflowTests(unittest.TestCase):
         self.assertEqual(
             {"analysis": "passed", "implementation": "passed"},
             result["analysis"]["handoff"]["gates"],
+        )
+        self.assertTrue(
+            any(
+                "telemetry" in finding
+                for finding in result["analysis"]["importantFindings"]
+            )
         )
         self.assertEqual(2, len(gates_for_story("TEST-001", self.db)))
 
@@ -279,6 +286,48 @@ class GateWorkflowTests(unittest.TestCase):
         self.assertIn("treeHash:", report)
         self.assertNotIn("headCommit:", report)
         self.assertIsNone(self.gate("analysis", evidence="intent accepted")["treeHash"])
+
+    def test_recorded_by_is_stored_separately_from_the_approver(self) -> None:
+        record = self.gate("analysis", recorded_by="deepseek")
+        self.assertEqual("deepseek", record["recordedBy"])
+        report = Path(record["report"]).read_text(encoding="utf-8")
+        self.assertIn('recordedBy: "deepseek"', report)
+        stored = gates_for_story("TEST-001", self.db)["analysis"]
+        self.assertEqual("deepseek", stored["recorded_by"])
+        self.assertEqual("fixture user", stored["approved_by"])
+
+    def test_verification_details_are_reported(self) -> None:
+        record = self.gate(
+            "implementation",
+            details={
+                "verification": {
+                    "result": "passed",
+                    "testCount": 7,
+                    "exitCode": 0,
+                }
+            },
+        )
+        report = Path(record["report"]).read_text(encoding="utf-8")
+        self.assertIn('verification: "passed (7 tests, exit 0)"', report)
+
+    def test_run_verify_records_a_structured_result(self) -> None:
+        scripts_dir = self.workspace / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "verify.py").write_text(
+            "print('Ran 7 tests in 0.1s')\nprint('OK')\n", encoding="utf-8"
+        )
+        result = run_verify(self.workspace)
+        self.assertEqual(0, result["exitCode"])
+        self.assertEqual(7, result["testCount"])
+        self.assertEqual("passed", result["result"])
+
+    def test_run_verify_refuses_unstaged_changes(self) -> None:
+        scripts_dir = self.workspace / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "verify.py").write_text("print('Ran 1 test')\n", encoding="utf-8")
+        self.write("README.md", "# Worktree only\n")
+        with self.assertRaisesRegex(ValueError, "unstaged changes"):
+            run_verify(self.workspace)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ from .service import (
     record_gate,
     record_resolution,
     record_session_review,
+    run_verify,
     select_project_folder,
     start_session,
     stop_session,
@@ -153,8 +154,22 @@ def parser() -> argparse.ArgumentParser:
     gate.add_argument(
         "--status", choices=("passed", "failed", "waived"), default="passed"
     )
-    gate.add_argument("--evidence", required=True)
+    gate.add_argument(
+        "--evidence",
+        help="What was checked and approved. Required for passed or waived "
+        "unless --run-verify supplies the summary.",
+    )
     gate.add_argument("--approved-by")
+    gate.add_argument(
+        "--recorded-by",
+        help="Host or agent that recorded the gate; provenance, not approval.",
+    )
+    gate.add_argument(
+        "--run-verify",
+        action="store_true",
+        help="Run scripts/verify.py first and store its exit code, test count "
+        "and result. Refuses when the working tree has unstaged changes.",
+    )
     gate.add_argument("--artifact", help="Reviewable artifact path for this gate.")
     gate.add_argument("--session")
     gate.add_argument("--workspace", type=Path)
@@ -348,6 +363,21 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "gate":
             workspace = args.workspace or select_project_folder(args.db)
             details = json.loads(args.details_json) if args.details_json else None
+            evidence = args.evidence
+            if args.run_verify:
+                verification = run_verify(workspace)
+                details = {**(details or {}), "verification": verification}
+                if not evidence:
+                    evidence = (
+                        f"python scripts/verify.py: "
+                        f"{verification['testCount'] or 'unknown'} tests "
+                        f"{verification['result']} (exit {verification['exitCode']})"
+                    )
+                if args.status == "passed" and verification["exitCode"] != 0:
+                    raise ValueError(
+                        "verify.py failed; the gate was not recorded. "
+                        f"Last output:\n{verification['outputTail']}"
+                    )
             print(
                 json.dumps(
                     record_gate(
@@ -355,8 +385,9 @@ def main(argv: list[str] | None = None) -> int:
                         story_id=args.story,
                         gate=args.gate_name,
                         status=args.status,
-                        evidence=args.evidence,
+                        evidence=evidence or "",
                         approved_by=args.approved_by,
+                        recorded_by=args.recorded_by,
                         artifact=args.artifact,
                         session_id=args.session,
                         details=details,

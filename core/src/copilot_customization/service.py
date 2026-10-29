@@ -907,6 +907,11 @@ def _write_commit_analysis(
     )
     metrics["sessionReports"] = session_report_count
     incremental_metrics["sessionReports"] = incremental_session_reports
+    if metrics.get("sessions") == 0 and metrics.get("events") == 0:
+        derived_findings.append(
+            "No session or event telemetry was recorded for this story; "
+            "duration, retries and cost cannot be measured."
+        )
     previous_findings = set(previous.get("importantFindings", [])) if previous else set()
     combined = list(
         dict.fromkeys(
@@ -1416,6 +1421,58 @@ def _head_commit(cwd: Path) -> str | None:
         return None
 
 
+VERIFY_TIMEOUT_SECONDS = 600
+
+
+def run_verify(workspace: Path) -> dict[str, Any]:
+    """Run the repository's verification suite and return structured evidence.
+
+    `verify.py` exercises the working tree, not the index, so an unstaged
+    change would make its result describe something other than the commit.
+    """
+    resolved = require_under_dev(workspace, "Workspace")
+    try:
+        root = Path(_run_git(resolved, "rev-parse", "--show-toplevel")).resolve()
+    except ValueError as error:
+        raise ValueError(
+            f"--run-verify requires a Git repository: {resolved}"
+        ) from error
+    script = root / "scripts" / "verify.py"
+    if not script.is_file():
+        raise ValueError(f"Verification script was not found: {script}")
+    dirty = subprocess.run(
+        ["git", "-C", str(root), "diff", "--quiet"],
+        capture_output=True,
+        check=False,
+    )
+    if dirty.returncode != 0:
+        raise ValueError(
+            "verify.py runs against the working tree; commit, stash or revert "
+            "unstaged changes before using --run-verify."
+        )
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=VERIFY_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ValueError(
+            f"verify.py exceeded {VERIFY_TIMEOUT_SECONDS}s; gate not recorded."
+        ) from error
+    output = (completed.stdout or "") + (completed.stderr or "")
+    match = re.search(r"Ran (\d+) tests?", output)
+    return {
+        "command": "python scripts/verify.py",
+        "exitCode": completed.returncode,
+        "testCount": int(match.group(1)) if match else None,
+        "result": "passed" if completed.returncode == 0 else "failed",
+        "outputTail": "\n".join(output.splitlines()[-40:]),
+    }
+
+
 def _staged_tree(cwd: Path) -> str | None:
     try:
         return _run_git(cwd, "write-tree")
@@ -1445,6 +1502,7 @@ def record_gate(
     status: str = "passed",
     evidence: str = "",
     approved_by: str | None = None,
+    recorded_by: str | None = None,
     artifact: str | None = None,
     session_id: str | None = None,
     details: dict[str, Any] | None = None,
@@ -1461,6 +1519,7 @@ def record_gate(
         raise ValueError(f"Status must be one of: {', '.join(GATE_STATUSES)}")
     evidence = (evidence or "").strip()
     approver = (approved_by or "").strip()
+    recorder = (recorded_by or "").strip() or None
     if status in {"passed", "waived"}:
         if not evidence:
             raise ValueError("A passed or waived gate requires --evidence.")
@@ -1509,10 +1568,20 @@ def record_gate(
         f'approvedBy: "{approver}"',
         f'recordedAt: "{timestamp}"',
     ]
+    if recorder:
+        lines.append(f'recordedBy: "{recorder}"')
     if head_commit:
         lines.append(f'headCommit: "{head_commit}"')
     if staged_tree:
         lines.append(f'treeHash: "{staged_tree}"')
+    verification = (details or {}).get("verification")
+    if isinstance(verification, dict):
+        lines.append(
+            "verification: "
+            f"\"{verification.get('result')} "
+            f"({verification.get('testCount')} tests, "
+            f"exit {verification.get('exitCode')})\""
+        )
     if artifact_path:
         lines.append(f'artifact: "{artifact_path}"')
     if artifact_sha256:
@@ -1525,9 +1594,9 @@ def record_gate(
             """
             INSERT INTO gates (
                 story_id, session_id, gate, status, artifact_path,
-                artifact_sha256, evidence, approved_by, recorded_at,
-                head_commit, tree_hash, details_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                artifact_sha256, evidence, approved_by, recorded_by,
+                recorded_at, head_commit, tree_hash, details_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 story_id,
@@ -1538,6 +1607,7 @@ def record_gate(
                 artifact_sha256,
                 evidence or "(no evidence recorded)",
                 approver or "(not recorded)",
+                recorder,
                 timestamp,
                 head_commit,
                 staged_tree,
@@ -1551,6 +1621,7 @@ def record_gate(
         "gate": gate,
         "status": status,
         "approvedBy": approver,
+        "recordedBy": recorder,
         "artifact": artifact_path,
         "artifactSha256": artifact_sha256,
         "headCommit": head_commit,

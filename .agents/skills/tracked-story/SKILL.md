@@ -11,7 +11,7 @@ Record each handoff as it closes. `commit-ready` refuses while a gate it needs i
 
 1. **Analysis and acceptance** (`analysis`). Write the intent, acceptance criteria, assumptions, out-of-scope and risks into the story or an `analysis.md` beside it. Ask the user to accept them, then record the gate with that artifact and the approver. No implementation before acceptance unless the user explicitly accepts the risk of starting without it.
 
-2. **Implementation** (`implementation`). Implement the narrowest change, run focused validation, then report what ran and what did not. Ask for commit authorization for this task. Stage only reviewed files, then record the gate with the validation evidence and the approver; it binds to that staged tree. Run `commit-ready` with an `ai commit by <ai>: ` title (`<ai>` is claude, deepseek, codex or copilot); it writes the handoff report.
+2. **Implementation** (`implementation`). Implement the narrowest change, run focused validation, then report what ran and what did not. Ask for commit authorization for this task. Stage only reviewed files, then record the gate with the validation evidence, the approver and the recording host (`--run-verify` runs `scripts/verify.py` first and stores its exit code, test count and result); it binds to that staged tree. Run `commit-ready` with an `ai commit by <ai>: ` title (`<ai>` is claude, deepseek, codex or copilot); it writes the handoff report.
 
 3. **Review** (`review`). Prefer a fresh reviewer session. Save findings, dispositions and residual risk under the story's `reviews/`, bounded to three rounds. Record the gate with that review file, then commit fixes with an `ai code review by <ai>: ` title. If nothing actionable remains, record the verdict and stop.
 
@@ -22,6 +22,6 @@ Record each handoff as it closes. `commit-ready` refuses while a gate it needs i
 6. **Handoff.** Publication is the user's operation: never push. End with outcome, changes, evidence and limits, and use `DONE`, `BLOCKED_NEEDS_USER`, `FAILED`, `STUCK`, `LIMIT_REACHED` or `SECURITY_STOP` accurately.
 
 ```powershell
-python scripts/sdlc.py gate --story SDLC-001 --gate analysis --artifact .sdlc/analysis.md --evidence "Criteria accepted in chat" --approved-by "<user>"
+python scripts/sdlc.py gate --story SDLC-001 --gate analysis --artifact .sdlc/analysis.md --evidence "Criteria accepted in chat" --approved-by "<user>" --recorded-by <ai>
 python scripts/sdlc.py commit-ready --workspace . --message "<summary>" --ai-name <ai> --prepared-by <ai> --summary "<reviewed change>" --validation-summary "<checks run>" --co-author "<Name> <noreply@host.example>"
 ```

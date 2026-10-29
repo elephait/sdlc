@@ -9,8 +9,10 @@ Open `C:\dev\common\sdlc` as the session workspace, then start a new chat. A ses
 One command refreshes every adapter, validates, and refreshes tracking without changing the active story. It works from any directory:
 
 ```powershell
-C:\dev\common\sdlc\onboard.cmd
+C:\dev\common\sdlc\onboard.cmd --workspace C:\dev\common\sdlc
 ```
+
+Pass `--workspace` explicitly. Without a terminal the project picker takes the most recently used project, which may not be this checkout; the launcher prints the project it chose.
 
 To refresh and track every untracked project under `C:\dev\common` as well, add `--all`; tracked projects are reported and left untouched:
 
@@ -34,20 +36,29 @@ The CLI works from any directory by absolute path. Optional install: `python -m 
 
 ## Gate-backed delivery
 
-Each handoff is a gate with an artifact and an approver; `commit-ready` refuses while a required gate is missing or stale. `implementation` and `customization` bind to the staged tree and the current HEAD, so stage first and re-record them after any further staging or commit; `analysis` is story-level. For a new story:
+Each handoff is a gate with an artifact and an approver; `commit-ready` refuses while a required gate is missing or stale. `implementation` and `customization` bind to the staged tree and the current HEAD, so stage first and re-record them after any further staging or commit; `analysis` is story-level. For a workspace without tracking:
 
 ```powershell
 python scripts/sdlc.py project-onboard --workspace C:\dev\common\sdlc --repository elephait/sdlc --story SDLC-002 --intent "Unify agent customization" --ledger-root C:\dev\common\sdlc\.sdlc\ledger --tracking-hooks none
-python scripts/sdlc.py session-start --story SDLC-002 --role implementation --session-id deepseek-sdlc-002 --host deepseek
-python scripts/sdlc.py gate --story SDLC-002 --gate analysis --artifact .sdlc/analysis.md --evidence "Criteria accepted in chat" --approved-by "<user>"
-git add <reviewed files>
-python scripts/sdlc.py gate --story SDLC-002 --gate implementation --evidence "python scripts/verify.py passed" --approved-by "<user>"
-python scripts/sdlc.py commit-ready --workspace C:\dev\common\sdlc --message "unify agent customization" --ai-name deepseek --prepared-by DeepSeek --summary "Describe the reviewed change" --validation-summary "Describe checks actually run" --co-author "DeepSeek <noreply@deepseek.com>"
 ```
+
+That fails if the workspace already has a different active story: onboarding never rebinds. Continue the existing story instead, and start a fresh session for this work:
+
+```powershell
+$sdlcStory = (Get-Content .sdlc/active-story.json -Raw | ConvertFrom-Json).storyId
+$sdlcSession = python scripts/sdlc.py session-start --story $sdlcStory --role implementation --host deepseek
+python scripts/sdlc.py gate --workspace C:\dev\common\sdlc --story $sdlcStory --gate analysis --artifact .sdlc/analysis.md --evidence "Criteria accepted in chat" --approved-by "<user>" --recorded-by deepseek
+git add <reviewed files>
+python scripts/sdlc.py gate --workspace C:\dev\common\sdlc --story $sdlcStory --gate implementation --run-verify --approved-by "<user>" --recorded-by deepseek
+python scripts/sdlc.py commit-ready --workspace C:\dev\common\sdlc --message "unify agent customization" --ai-name deepseek --prepared-by DeepSeek --summary "Describe the reviewed change" --validation-summary "Describe checks actually run" --co-author "DeepSeek <noreply@deepseek.com>"
+python scripts/sdlc.py session-stop --session $sdlcSession --outcome DONE
+```
+
+`--run-verify` runs `scripts/verify.py` and stores its exit code, test count and result with the gate; it refuses when the working tree has unstaged changes, so stage first. `--recorded-by` records the host that wrote the gate; it is provenance, separate from the approver.
 
 Use `--gate review` with the review file before an `ai code review by deepseek:` commit, `--gate customization` when the change touches policy, skills, core, scripts, a root launcher or an adapter, and `--gate docs` after the README reconcile. `gate --status waived --approved-by <user> --evidence <reason>` records an explicit waiver instead of a pass.
 
-Tracking is optional for small tasks. `session-stop` needs the real outcome, and `DONE` needs acceptance evidence. `tracking-report` exits 2 when capture is stale or absent; this host records nothing automatically, so the report reflects only what you record.
+Tracking is optional for small tasks, but this host records nothing automatically: if a story has no session and no events, `commit-ready` adds a "no telemetry" finding because duration, retries and cost cannot be measured. `session-stop` needs the real outcome, and `DONE` needs acceptance evidence. `tracking-report` exits 2 when capture is stale or absent.
 
 ## Skills in this host
 

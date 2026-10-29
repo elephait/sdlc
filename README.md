@@ -51,7 +51,7 @@ Generated files are the Copilot/Claude plugin `skills/` and `scripts/`, Copilot 
 
 ## Handoff gates
 
-A story moves through five handoffs: analysis and acceptance, implementation, review, customization (when policy, skills, core, scripts, a root launcher or an adapter changes) and the final README reconcile. Each records its evidence and a named approver with `python scripts/sdlc.py gate`. `commit-ready` refuses while a gate it needs is missing or stale: an `ai commit by <ai>: ` needs `analysis` and `implementation`, an `ai code review by <ai>: ` needs `review` and `docs`, and either needs `customization` when the staged paths touch the customization layers. `implementation` and `customization` bind to the staged tree, so stage the reviewed files before recording them; `review` and `docs` must postdate the last commit; `analysis` is story-level and is not re-recorded per commit. The full sequence is in [skills/tracked-story/SKILL.md](skills/tracked-story/SKILL.md).
+A story moves through five handoffs: analysis and acceptance, implementation, review, customization (when policy, skills, core, scripts, a root launcher or an adapter changes) and the final README reconcile. Each records its evidence and a named approver with `python scripts/sdlc.py gate`. `commit-ready` refuses while a gate it needs is missing or stale: an `ai commit by <ai>: ` needs `analysis` and `implementation`, an `ai code review by <ai>: ` needs `review` and `docs`, and either needs `customization` when the staged paths touch the customization layers. `implementation` and `customization` bind to the staged tree, so stage the reviewed files before recording them; `review` and `docs` must postdate the last commit; `analysis` is story-level and is not re-recorded per commit. `gate --run-verify` runs `scripts/verify.py` and stores its exit code, test count and result, refusing when the working tree has unstaged changes; `--recorded-by` records the host that wrote the gate as provenance, separate from the approver. When a story has no sessions or events, the handoff report states that duration, retries and cost cannot be measured. The full sequence is in [skills/tracked-story/SKILL.md](skills/tracked-story/SKILL.md).
 
 A story can start on one host and finish on another. The payload is shared and the gate records are in the shared database, so the next host continues from the commit report rather than from a transcript. The first customization commit in this repository was made in Copilot; later ones in Claude and Codex; nothing in the workflow is tied to the host that opened the story.
 
@@ -75,7 +75,7 @@ An existing story belongs to one project/repository. To switch stories, finish o
 Record each handoff as it closes, with the evidence the approver saw:
 
 ```powershell
-python scripts/sdlc.py gate --story SDLC-002 --gate analysis --artifact .sdlc/analysis.md --evidence "Criteria accepted in chat" --approved-by "<user>"
+python scripts/sdlc.py gate --story SDLC-002 --gate analysis --artifact .sdlc/analysis.md --evidence "Criteria accepted in chat" --approved-by "<user>" --recorded-by <ai>
 python scripts/sdlc.py gate-status --story SDLC-002
 ```
 

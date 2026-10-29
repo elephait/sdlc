@@ -22,7 +22,7 @@ Five handoffs structure a story. Each closes with recorded evidence and a named 
 4. **Customization.** Any change to policy, skills, core, scripts, the root launchers or a host adapter names its layer and passes the drift check.
 5. **Documentation.** The end-user README matches current operation, architecture and limits.
 
-`copilot-sdlc gate` records a gate with its artifact and evidence. `commit-ready` refuses while a required gate is missing or stale, and every gate names who approved it. `implementation` and `customization` bind to the staged tree and must be recorded after staging; `analysis` is story-level and stays valid across commits. A waiver is evidence too: name the approver and the reason.
+`copilot-sdlc gate` records a gate with its artifact, evidence, approver and (when supplied) the host that recorded it. `commit-ready` refuses while a required gate is missing or stale, and every gate names who approved it. `implementation` and `customization` bind to the staged tree and must be recorded after staging; `analysis` is story-level and stays valid across commits. A waiver is evidence too: name the approver and the reason.
 
 ## Delivery and evidence
 
