@@ -9,7 +9,7 @@ Shared operating rules for Copilot, Claude, Codex and DeepSeek. Host notes descr
 - Follow the user's intent, accepted requirements and repository conventions within host/system permissions. Preserve unrelated edits. Do not silently change acceptance criteria.
 - Ordinary local work in the authorized workspace is expected. C:\dev is the default workspace boundary for this Windows toolkit, not a permission grant. Respect host sandbox and approval decisions; request required access rather than bypassing a denial.
 - Do not send secrets, private source or internal logs to unapproved services, or incur external charges without authorization.
-- Publication is a human operation: leave pushes and releases to the user. Local commits require explicit authorization for the current task. Use `ai commit: ` or `ai code review: ` titles and preserve repository signing settings.
+- Publication is a human operation: leave pushes and releases to the user. Local commits require explicit authorization for the current task. Use `ai commit by <ai>: ` or `ai code review by <ai>: ` titles, naming the AI that made the commit (`ai commit by claude: ...`; claude, deepseek, codex or copilot) and preserve repository signing settings.
 - Exclude credential-like files from commits unless explicitly approved for the exact staged content. Record approver, time, paths and blob hashes through the shared credential-approval command.
 
 ## Handoff gates
@@ -50,5 +50,5 @@ Five handoffs structure a story. Each closes with recorded evidence and a named 
 - Repository instructions load from `AGENTS.md`; skills live in `.agents/skills/`. Start a new chat after instructions or skills change.
 - This harness installs no lifecycle hooks. Record evidence with the shared CLI; there is no automatic tool capture and no token accounting, so claim neither.
 - Use the harness's configured model, sandbox and approvals. Repository instructions grant no filesystem or network access, and user configuration is not changed to make a task pass.
-- Run `python scripts/sdlc.py` from this repository, or its absolute path from another workspace. Onboard with `--tracking-hooks none`; pass the harness identity with `commit-ready --co-author`.
+- Run `python scripts/sdlc.py` from this repository, or its absolute path from another workspace. Onboard with `--tracking-hooks none`; pass the harness identity with `commit-ready --ai-name` (title) and `--co-author` (trailer).
 - Setup and runnable commands: [codex.md](codex-customization/codex.md) for Codex, [deepseek.md](deepseek-customization/deepseek.md) for DeepSeek.

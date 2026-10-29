@@ -642,6 +642,44 @@ def record_session_review(
     return int(cursor.lastrowid)
 
 
+# Titles name the AI that made the commit: "ai commit by claude: <summary>".
+_TITLE = re.compile(
+    r"^ai (commit|code review)(?: by ([A-Za-z0-9][A-Za-z0-9._-]*))?: "
+)
+
+
+def ai_label(*candidates: str | None) -> str:
+    """First usable AI name, as a lowercase token safe for a commit title.
+
+    A co-author identity such as "Claude Sonnet 5.5 <noreply@anthropic.com>"
+    contributes only the name before the address.
+    """
+    for candidate in candidates:
+        name = re.sub(r"<[^>]*>", "", candidate or "").strip().lower()
+        token = re.sub(r"[^a-z0-9._-]+", "-", name).strip("-._")
+        if token:
+            return token
+    raise ValueError(
+        "Commit title needs the AI's name: pass --ai-name, --co-author or "
+        "--prepared-by, or set $SDLC_AI_NAME."
+    )
+
+
+def named_title(message: str, label: str) -> str:
+    """Return `message` as `ai commit by <label>: ...` or `ai code review by ...`.
+
+    An existing named title is kept as written; the legacy unnamed prefix and
+    a bare summary are given the name.
+    """
+    title = message.strip()
+    match = _TITLE.match(title)
+    if match and match.group(2):
+        return title
+    kind = match.group(1) if match else "commit"
+    summary = title[match.end():] if match else title
+    return f"ai {kind} by {label}: {summary}"
+
+
 def commit_ready(
     workspace: Path,
     message: str,
@@ -651,6 +689,7 @@ def commit_ready(
     db_path: Path = DEFAULT_DB,
     validation_summary: str | None = None,
     co_author: str | None = None,
+    ai_name: str | None = None,
 ) -> dict[str, Any]:
     resolved_workspace = require_under_dev(workspace, "Workspace")
     active_path = resolved_workspace / ".sdlc" / "active-story.json"
@@ -680,9 +719,11 @@ def commit_ready(
     ledger = _active_ledger(active, resolved_workspace)
     _validate_handoff_inputs(resolved_workspace, ledger)
 
-    title = message.strip()
-    if not title.startswith(("ai commit: ", "ai code review: ")):
-        title = f"ai commit: {title}"
+    trailer = co_author or os.environ.get("SDLC_CO_AUTHOR")
+    title = named_title(
+        message,
+        ai_label(ai_name, os.environ.get("SDLC_AI_NAME"), trailer, prepared_by),
+    )
     gates = _enforce_gates(story_id, title, staged_files, db_path)
     policy_command = f'git -C "{repository_root}" commit -m "{title}"'
     policy = _commit_policy_decision(repository_root, policy_command)
@@ -697,7 +738,6 @@ def commit_ready(
         )
     except ValueError:
         previous_commit = None
-    trailer = co_author or os.environ.get("SDLC_CO_AUTHOR")
     commit_args = ["commit", "-m", title]
     if trailer:
         commit_args.extend(["-m", f"Co-authored-by: {trailer}"])
@@ -1335,7 +1375,7 @@ def required_gates(message: str, staged_files: list[str]) -> list[str]:
     """Gates a commit of this shape must already have passed or waived."""
     gates = (
         {"review", "docs"}
-        if message.startswith("ai code review: ")
+        if (_TITLE.match(message) or [None, None])[1] == "code review"
         else {"analysis", "implementation"}
     )
     if any(_is_customization_path(path) for path in staged_files):

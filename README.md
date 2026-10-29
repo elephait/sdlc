@@ -21,7 +21,7 @@ For this SDLC project, run one command from any PowerShell directory:
 C:\dev\common\sdlc\onboard.cmd
 ```
 
-This refreshes all four adapters, runs validation, and refreshes shared tracking while preserving the active story. It stops on the first failure. Python 3.11+ must be on PATH. For a first-time story, supply `--story SDLC-001 --intent "Optimize shared agent customization"`; an existing different active story is never replaced. This launcher onboards the SDLC checkout containing it, regardless of your current directory. It uses the latest local sources and does not pull Git changes, install global settings, or launch four agents.
+This refreshes all four adapters, runs validation, and refreshes shared tracking while preserving the active story. It stops on the first failure. Python 3.11+ must be on PATH. For a first-time story, supply `--story <ID> --intent "<intent>"` (the intent defaults to "Optimize shared agent customization" only for this checkout); an existing different active story is never replaced. The launcher asks which project to track, listing recent projects with the most recently used as the default (press Enter to accept, or type a number or folder name); pass `--workspace <path>` to skip the question. Adapter refresh and validation always run against the SDLC checkout containing the launcher, regardless of your current directory. It uses the latest local sources and does not pull Git changes, install global settings, or launch four agents.
 
 To also track every untracked project under `C:\dev\common`, run `C:\dev\common\sdlc\onboard.cmd --all` or `onboard-all.cmd`. A project with an active story is reported as preserved and never rebound; a project without one gets `.sdlc/project.yaml`, a binding and a ledger under `C:\dev\common\.sdlc-ledger`. Preview with `--dry-run`.
 
@@ -49,7 +49,7 @@ Generated files are the Copilot/Claude plugin `skills/` and `scripts/`, Copilot 
 
 ## Handoff gates
 
-A story moves through five handoffs: analysis and acceptance, implementation, review, customization (when policy, skills, core or an adapter changes) and the final README reconcile. Each records its evidence and a named approver with `python scripts/sdlc.py gate`. `commit-ready` refuses while a gate it needs is missing: an `ai commit: ` needs `analysis` and `implementation`, an `ai code review: ` needs `review` and `docs`, and either needs `customization` when the staged paths touch the customization layers. The full sequence is in [skills/tracked-story/SKILL.md](skills/tracked-story/SKILL.md).
+A story moves through five handoffs: analysis and acceptance, implementation, review, customization (when policy, skills, core or an adapter changes) and the final README reconcile. Each records its evidence and a named approver with `python scripts/sdlc.py gate`. `commit-ready` refuses while a gate it needs is missing: an `ai commit by <ai>: ` needs `analysis` and `implementation`, an `ai code review by <ai>: ` needs `review` and `docs`, and either needs `customization` when the staged paths touch the customization layers. The full sequence is in [skills/tracked-story/SKILL.md](skills/tracked-story/SKILL.md).
 
 A story can start on one host and finish on another. The payload is shared and the gate records are in the shared database, so the next host continues from the commit report rather than from a transcript. The first customization commit in this repository was made in Copilot; later ones in Claude and Codex; nothing in the workflow is tied to the host that opened the story.
 

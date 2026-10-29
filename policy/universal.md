@@ -7,7 +7,7 @@ Shared operating rules for Copilot, Claude, Codex and DeepSeek. Host notes descr
 - Follow the user's intent, accepted requirements and repository conventions within host/system permissions. Preserve unrelated edits. Do not silently change acceptance criteria.
 - Ordinary local work in the authorized workspace is expected. C:\dev is the default workspace boundary for this Windows toolkit, not a permission grant. Respect host sandbox and approval decisions; request required access rather than bypassing a denial.
 - Do not send secrets, private source or internal logs to unapproved services, or incur external charges without authorization.
-- Publication is a human operation: leave pushes and releases to the user. Local commits require explicit authorization for the current task. Use `ai commit: ` or `ai code review: ` titles and preserve repository signing settings.
+- Publication is a human operation: leave pushes and releases to the user. Local commits require explicit authorization for the current task. Use `ai commit by <ai>: ` or `ai code review by <ai>: ` titles, naming the AI that made the commit (`ai commit by claude: ...`; claude, deepseek, codex or copilot) and preserve repository signing settings.
 - Exclude credential-like files from commits unless explicitly approved for the exact staged content. Record approver, time, paths and blob hashes through the shared credential-approval command.
 
 ## Handoff gates

@@ -11,9 +11,9 @@ Record each handoff as it closes. `commit-ready` refuses while a gate it needs i
 
 1. **Analysis and acceptance** (`analysis`). Write the intent, acceptance criteria, assumptions, out-of-scope and risks into the story or an `analysis.md` beside it. Ask the user to accept them, then record the gate with that artifact and the approver. No implementation before acceptance unless the user explicitly accepts the risk of starting without it.
 
-2. **Implementation** (`implementation`). Implement the narrowest change, run focused validation, then report what ran and what did not. Ask for commit authorization for this task. Record the gate with the validation evidence and the approver. Stage only reviewed files, then run `commit-ready` with an `ai commit: ` title; it writes the handoff report.
+2. **Implementation** (`implementation`). Implement the narrowest change, run focused validation, then report what ran and what did not. Ask for commit authorization for this task. Record the gate with the validation evidence and the approver. Stage only reviewed files, then run `commit-ready` with an `ai commit by <ai>: ` title (`<ai>` is claude, deepseek, codex or copilot); it writes the handoff report.
 
-3. **Review** (`review`). Prefer a fresh reviewer session. Save findings, dispositions and residual risk under the story's `reviews/`, bounded to three rounds. Record the gate with that review file, then commit fixes with an `ai code review: ` title. If nothing actionable remains, record the verdict and stop.
+3. **Review** (`review`). Prefer a fresh reviewer session. Save findings, dispositions and residual risk under the story's `reviews/`, bounded to three rounds. Record the gate with that review file, then commit fixes with an `ai code review by <ai>: ` title. If nothing actionable remains, record the verdict and stop.
 
 4. **Customization** (`customization`). Required when the change touches `policy/`, `skills/`, `core/` or any `*-customization/` folder: name the layer that changed, run `python scripts/sync-customizations.py` and `python scripts/verify.py`, and record the gate with the drift-check result.
 
@@ -23,5 +23,5 @@ Record each handoff as it closes. `commit-ready` refuses while a gate it needs i
 
 ```powershell
 python scripts/sdlc.py gate --story SDLC-001 --gate analysis --artifact .sdlc/analysis.md --evidence "Criteria accepted in chat" --approved-by "<user>"
-python scripts/sdlc.py commit-ready --workspace . --message "ai commit: <summary>" --prepared-by Codex --summary "<reviewed change>" --validation-summary "<checks run>" --co-author "Codex <noreply@openai.com>"
+python scripts/sdlc.py commit-ready --workspace . --message "<summary>" --ai-name <ai> --prepared-by <ai> --summary "<reviewed change>" --validation-summary "<checks run>" --co-author "<Name> <noreply@host.example>"
 ```

@@ -41,10 +41,10 @@ python scripts/sdlc.py project-onboard --workspace C:\dev\common\sdlc --reposito
 python scripts/sdlc.py session-start --story SDLC-002 --role implementation --session-id deepseek-sdlc-002 --host deepseek
 python scripts/sdlc.py gate --story SDLC-002 --gate analysis --artifact .sdlc/analysis.md --evidence "Criteria accepted in chat" --approved-by "<user>"
 python scripts/sdlc.py gate --story SDLC-002 --gate implementation --evidence "python scripts/verify.py passed" --approved-by "<user>"
-python scripts/sdlc.py commit-ready --workspace C:\dev\common\sdlc --message "ai commit: unify agent customization" --prepared-by DeepSeek --summary "Describe the reviewed change" --validation-summary "Describe checks actually run" --co-author "DeepSeek <noreply@deepseek.com>"
+python scripts/sdlc.py commit-ready --workspace C:\dev\common\sdlc --message "unify agent customization" --ai-name deepseek --prepared-by DeepSeek --summary "Describe the reviewed change" --validation-summary "Describe checks actually run" --co-author "DeepSeek <noreply@deepseek.com>"
 ```
 
-Use `--gate review` with the review file before an `ai code review:` commit, `--gate customization` when the change touches policy, skills, core or an adapter, and `--gate docs` after the README reconcile. `gate --status waived --approved-by <user> --evidence <reason>` records an explicit waiver instead of a pass.
+Use `--gate review` with the review file before an `ai code review by deepseek:` commit, `--gate customization` when the change touches policy, skills, core or an adapter, and `--gate docs` after the README reconcile. `gate --status waived --approved-by <user> --evidence <reason>` records an explicit waiver instead of a pass.
 
 Tracking is optional for small tasks. `session-stop` needs the real outcome, and `DONE` needs acceptance evidence. `tracking-report` exits 2 when capture is stale or absent; this host records nothing automatically, so the report reflects only what you record.
 

@@ -17,10 +17,10 @@ From this folder, `python -m copilot_customization.cli` works without installing
 | `project-onboard` | Create or refresh `.sdlc/` metadata; use `--tracking-hooks copilot-workspace` only without plugin tracking. Default `none` installs no hooks. |
 | `tracking-report` | Capture health first; exit code `2` when evidence is missing or older than 15 minutes (`--allow-stale` to override). |
 | `gate` | Record a handoff gate (`analysis`, `implementation`, `review`, `customization`, `docs`) with its artifact, evidence and named approver. `gate-status` shows the latest state. |
-| `commit-ready` | Validate commit policy and the required gates, make one local commit, write a hash-named handoff report. Takes `--co-author` (default `$SDLC_CO_AUTHOR`, otherwise no trailer). |
+| `commit-ready` | Validate commit policy and the required gates, make one local commit, write a hash-named handoff report. Takes `--co-author` (default `$SDLC_CO_AUTHOR`, otherwise no trailer) and `--ai-name` (default `$SDLC_AI_NAME`, then the co-author name, then `--prepared-by`) for the title. |
 | `event`, `decision`, `resolve-event`, `session-*`, `scorecard`, `compact`, `bottlenecks` | Record and analyze evidence; run `--help` for flags. `session-start --host` attributes a session to a harness. |
 
-Normal delivery commits use `ai commit: `; fresh-review fixes use `ai code review: `. An `ai commit: ` requires the `analysis` and `implementation` gates, an `ai code review: ` requires `review` and `docs`, and either requires `customization` when staged paths touch policy, skills, core or an adapter. A missing gate stops the commit before Git runs. Credential-like files are excluded from commits unless approved (recorded with approver, time, reason, paths and staged blob hashes). Push is never done by this tool.
+Normal delivery commits use `ai commit by <ai>: ` (for example `ai commit by claude: add gates`); fresh-review fixes use `ai code review by <ai>: `. `commit-ready` adds the AI name to a bare or legacy `ai commit: ` message, and the scope hook rejects a direct `git commit` whose title lacks it. An `ai commit by <ai>: ` requires the `analysis` and `implementation` gates, an `ai code review by <ai>: ` requires `review` and `docs`, and either requires `customization` when staged paths touch policy, skills, core or an adapter. A missing gate stops the commit before Git runs. Credential-like files are excluded from commits unless approved (recorded with approver, time, reason, paths and staged blob hashes). Push is never done by this tool.
 
 ## Layout
 

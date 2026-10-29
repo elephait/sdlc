@@ -84,6 +84,11 @@ class GateWorkflowTests(unittest.TestCase):
         result = commit_ready(
             self.workspace, "ai commit: first", "test", "summary", [], self.db
         )
+        self.assertEqual("ai commit by test: first", result["title"])
+        self.assertEqual(
+            "ai commit by test: first",
+            self.git("log", "-1", "--format=%s").stdout.strip(),
+        )
         self.assertEqual(
             {"analysis": "passed", "implementation": "passed"}, result["gates"]
         )

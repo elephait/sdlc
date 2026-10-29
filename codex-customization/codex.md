@@ -40,7 +40,7 @@ Record the actual validation result in a decision or the handoff report; the eve
 After explicit local commit authorization, review and stage named files, then use the shared workflow (replace the summary, evidence and identity with actual values):
 
 ```powershell
-python scripts/sdlc.py commit-ready --workspace C:\dev\common\sdlc --message "ai code review: unify host customization" --prepared-by Codex --summary "Describe the reviewed change" --validation-summary "Describe checks actually run" --co-author "Codex <noreply@openai.com>"
+python scripts/sdlc.py commit-ready --workspace C:\dev\common\sdlc --message "ai code review by codex: unify host customization" --ai-name codex --prepared-by Codex --summary "Describe the reviewed change" --validation-summary "Describe checks actually run" --co-author "Codex <noreply@openai.com>"
 ```
 
 This command commits the current index and writes a handoff report. It does not run validation itself. Git signing settings remain effective. Publication remains a human operation.

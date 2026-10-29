@@ -10,7 +10,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-COMMIT_PREFIXES = ("ai commit: ", "ai code review: ")
+# "ai commit by claude: ..." / "ai code review by deepseek: ...": the title
+# names the AI that made the commit (claude, deepseek, codex, copilot, ...).
+COMMIT_TITLE = re.compile(
+    r"^ai (?:commit|code review) by [A-Za-z0-9][A-Za-z0-9._-]*: "
+)
 CREDENTIAL_APPROVALS = Path(".sdlc") / "credential-commit-approvals.jsonl"
 CREDENTIAL_NAMES = {
     ".env",
@@ -231,11 +235,12 @@ def hook_decision(payload: dict[str, object]) -> dict[str, str]:
     if GIT_COMMIT.search(command):
         repository = git_command_cwd(command, Path(cwd or Path.cwd()))
         title = commit_title(command, repository)
-        if title is None or not title.startswith(COMMIT_PREFIXES):
+        if title is None or not COMMIT_TITLE.match(title):
             decision = "deny"
             reason = (
-                "AI-performed commit titles must start with one of "
-                f"{COMMIT_PREFIXES!r}."
+                "AI-performed commit titles must start with "
+                "'ai commit by <ai>: ' or 'ai code review by <ai>: ' "
+                "(for example 'ai commit by claude: <summary>')."
             )
         else:
             credentials = staged_credentials(repository)

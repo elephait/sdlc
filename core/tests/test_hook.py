@@ -127,6 +127,24 @@ class ScopeDecisionTests(unittest.TestCase):
             "deny", self.decide("Bash", {"command": "git commit -m 'oops'"})
         )
 
+    def test_commit_title_must_name_the_ai(self) -> None:
+        # Accepted titles are checked against the pattern itself: a full
+        # decision would also scan a real repository for staged credentials.
+        for title in (
+            "ai commit by claude: x",
+            "ai commit by deepseek: x",
+            "ai code review by codex: x",
+            "ai commit by copilot: x",
+        ):
+            self.assertTrue(scope_hook.COMMIT_TITLE.match(title), title)
+        for title in ("ai commit: x", "ai commit by : x", "ai committed by claude: x"):
+            self.assertFalse(scope_hook.COMMIT_TITLE.match(title), title)
+            self.assertEqual(
+                "deny",
+                self.decide("Bash", {"command": f'git commit -m "{title}"'}),
+                title,
+            )
+
     def test_write_outside_dev_root_is_denied(self) -> None:
         self.assertEqual(
             "deny",

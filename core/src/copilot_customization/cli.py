@@ -101,6 +101,13 @@ def parser() -> argparse.ArgumentParser:
         "rather than attributing the commit to another harness.",
     )
 
+    ready.add_argument(
+        "--ai-name",
+        help="AI named in the title, e.g. claude, deepseek, codex or copilot "
+        "(`ai commit by claude: ...`). Defaults to $SDLC_AI_NAME, then the "
+        "--co-author name, then --prepared-by.",
+    )
+
     event = commands.add_parser("event")
     event.add_argument("--story", required=True)
     event.add_argument("--session")
@@ -285,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
                         args.db,
                         args.validation_summary,
                         args.co_author,
+                        args.ai_name,
                     ),
                     indent=2,
                 )

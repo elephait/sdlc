@@ -7,7 +7,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from copilot_customization.cli import main, parser
-from copilot_customization.service import _commit_policy_decision
+from copilot_customization.service import (
+    _commit_policy_decision,
+    ai_label,
+    named_title,
+    required_gates,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +22,7 @@ class CommitWorkflowTests(unittest.TestCase):
     def test_commit_policy_reads_scope_hook_contract(self) -> None:
         decision = _commit_policy_decision(
             ROOT,
-            f'git -C "{ROOT}" commit -m "ai commit: contract check"',
+            f'git -C "{ROOT}" commit -m "ai commit by test: contract check"',
         )
 
         self.assertEqual("allow", decision["permissionDecision"])
