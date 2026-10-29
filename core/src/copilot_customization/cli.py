@@ -14,12 +14,14 @@ from .service import (
     compact_events,
     create_story,
     generate_scorecard,
+    gates_for_story,
     import_jsonl,
     list_events,
     onboard_project,
     record_customization,
     record_decision,
     record_event,
+    record_gate,
     record_resolution,
     record_session_review,
     select_project_folder,
@@ -48,6 +50,10 @@ def parser() -> argparse.ArgumentParser:
         default="medium",
     )
     onboard.add_argument("--ledger-root", type=Path)
+    onboard.add_argument(
+        "--tracking-hooks", choices=("none", "copilot-workspace"), default="none",
+        help="Use none with a host plugin or Codex; workspace hooks are opt-in.",
+    )
 
     story = commands.add_parser("story-create")
     story.add_argument("--id", required=True)
@@ -63,6 +69,10 @@ def parser() -> argparse.ArgumentParser:
     session.add_argument("--story", required=True)
     session.add_argument("--role", required=True)
     session.add_argument("--model")
+    session.add_argument(
+        "--host",
+        help="Harness that ran the session: copilot, claude, codex or deepseek.",
+    )
     session.add_argument("--session-id")
 
     session_stop = commands.add_parser("session-stop")
@@ -87,7 +97,8 @@ def parser() -> argparse.ArgumentParser:
     ready.add_argument(
         "--co-author",
         help='Commit trailer identity, e.g. "Claude <noreply@anthropic.com>". '
-        "Defaults to $SDLC_CO_AUTHOR, then Copilot.",
+        "Defaults to $SDLC_CO_AUTHOR; with neither, no trailer is added "
+        "rather than attributing the commit to another harness.",
     )
 
     event = commands.add_parser("event")
@@ -121,6 +132,31 @@ def parser() -> argparse.ArgumentParser:
     resolution.add_argument("--event-id", type=int, required=True)
     resolution.add_argument("--summary", required=True)
     resolution.add_argument("--session")
+
+    gate = commands.add_parser(
+        "gate", help="Record a handoff gate with its evidence and approver."
+    )
+    gate.add_argument("--story", required=True)
+    gate.add_argument(
+        "--gate",
+        dest="gate_name",
+        required=True,
+        choices=("analysis", "implementation", "review", "customization", "docs"),
+    )
+    gate.add_argument(
+        "--status", choices=("passed", "failed", "waived"), default="passed"
+    )
+    gate.add_argument("--evidence", required=True)
+    gate.add_argument("--approved-by")
+    gate.add_argument("--artifact", help="Reviewable artifact path for this gate.")
+    gate.add_argument("--session")
+    gate.add_argument("--workspace", type=Path)
+    gate.add_argument("--details-json")
+
+    gate_status = commands.add_parser(
+        "gate-status", help="Show the latest recorded state of each gate."
+    )
+    gate_status.add_argument("--story", required=True)
 
     customization = commands.add_parser("customization-record")
     customization.add_argument("--component", required=True)
@@ -198,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
                         args.priority,
                         args.ledger_root,
                         args.db,
+                        args.tracking_hooks,
                     ),
                     indent=2,
                 )
@@ -216,7 +253,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "session-start":
             print(
                 start_session(
-                    args.story, args.role, args.model, args.session_id, args.db
+                    args.story,
+                    args.role,
+                    args.model,
+                    args.session_id,
+                    db_path=args.db,
+                    host=args.host,
                 )
             )
         elif args.command == "session-stop":
@@ -293,6 +335,33 @@ def main(argv: list[str] | None = None) -> int:
                     args.summary,
                     args.session,
                     args.db,
+                )
+            )
+        elif args.command == "gate":
+            workspace = args.workspace or select_project_folder(args.db)
+            details = json.loads(args.details_json) if args.details_json else None
+            print(
+                json.dumps(
+                    record_gate(
+                        workspace=workspace,
+                        story_id=args.story,
+                        gate=args.gate_name,
+                        status=args.status,
+                        evidence=args.evidence,
+                        approved_by=args.approved_by,
+                        artifact=args.artifact,
+                        session_id=args.session,
+                        details=details,
+                        db_path=args.db,
+                    ),
+                    indent=2,
+                )
+            )
+        elif args.command == "gate-status":
+            print(
+                json.dumps(
+                    gates_for_story(args.story, args.db),
+                    indent=2,
                 )
             )
         elif args.command == "customization-record":

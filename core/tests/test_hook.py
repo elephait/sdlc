@@ -17,7 +17,6 @@ import scope_hook  # noqa: E402
 import tracking_hook  # noqa: E402
 
 HOOK_CONFIGS = (
-    REPO / ".github" / "hooks" / "copilot-sdlc.json",
     REPO / "copilot-customization" / "plugin" / "com.github.copilot"
     / "hooks" / "hooks.json",
 )
@@ -59,7 +58,7 @@ class HookContractTests(unittest.TestCase):
                 config = json.loads(path.read_text(encoding="utf-8"))
                 self.assertEqual(1, config["version"])
                 self.assertEqual(
-                    {"SessionStart", "PostToolUse", "Stop"},
+                    {"SessionStart", "PostToolUse", "PostToolUseFailure", "Stop"},
                     set(config["hooks"]),
                 )
                 for entries in config["hooks"].values():
@@ -111,6 +110,18 @@ class ScopeDecisionTests(unittest.TestCase):
             "allow", self.decide("Bash", {"command": "git log --grep push"})
         )
 
+    def test_file_content_is_not_a_write_destination(self) -> None:
+        self.assertEqual("allow", self.decide("Write", {
+            "file_path": r"C:\dev\x\guide.md", "content": r"Example D:\outside\file.txt"
+        }))
+
+    def test_relative_write_cannot_escape_dev(self) -> None:
+        self.assertEqual("deny", self.decide("Write", {"file_path": r"..\..\outside.txt"}))
+
+    def test_repository_does_not_duplicate_plugin_tracking(self) -> None:
+        config = json.loads((REPO / ".github/hooks/copilot-sdlc.json").read_text())
+        self.assertEqual({}, config["hooks"])
+
     def test_commit_title_prefix_is_enforced(self) -> None:
         self.assertEqual(
             "deny", self.decide("Bash", {"command": "git commit -m 'oops'"})
@@ -120,6 +131,29 @@ class ScopeDecisionTests(unittest.TestCase):
         self.assertEqual(
             "deny",
             self.decide("Write", {"file_path": r"D:\other\a.txt", "content": ""}),
+        )
+
+    def test_git_exe_is_judged_like_git(self) -> None:
+        self.assertEqual(
+            "deny", self.decide("Bash", {"command": "git.exe push origin main"})
+        )
+        self.assertEqual(
+            "deny", self.decide("Bash", {"command": "git.exe commit -m 'oops'"})
+        )
+
+    def test_dash_c_inside_a_message_is_not_a_repository(self) -> None:
+        fallback = Path(r"C:\dev\fallback")
+        self.assertEqual(
+            fallback,
+            scope_hook.git_command_cwd(
+                'git commit -m "ai commit: x -C C:\\dev\\fake"', fallback
+            ),
+        )
+        self.assertEqual(
+            Path(r"C:\dev\repo"),
+            scope_hook.git_command_cwd(
+                'git -C "C:\\dev\\repo" commit -m "ai commit: x"', fallback
+            ),
         )
 
     def test_no_allow_flag_defers_allowed_calls(self) -> None:

@@ -11,7 +11,7 @@ VS Code Copilot adapter for the shared SDLC workflow. It contains only what is s
 ## Use
 
 - Install the plugin in VS Code Copilot from `plugin/`, then start a new session.
-- Workspace tracking hooks live at `.github/hooks/copilot-sdlc.json` in the tracked workspace; `copilot-sdlc project-onboard` writes them.
+- Workspace tracking hooks live at `.github/hooks/copilot-sdlc.json` in the tracked workspace; `copilot-sdlc project-onboard --tracking-hooks copilot-workspace` writes them.
 - Operation, CLI and architecture: [core/README.md](../core/README.md).
 
 ## Limits
@@ -19,3 +19,5 @@ VS Code Copilot adapter for the shared SDLC workflow. It contains only what is s
 - No `PreToolUse` hook is installed (it can trigger repeated permission prompts), so commit policy is enforced through `commit-ready`.
 - Standard Copilot surfaces do not expose authoritative token usage.
 - Enterprise plugin distribution needs administrator approval.
+
+Use plugin tracking OR workspace tracking, never both. Default onboarding installs no hooks. This repository keeps an empty workspace hook registration to avoid duplicate plugin events. For an existing workspace, remove only the old SDLC hook entries when switching to plugin tracking.

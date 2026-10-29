@@ -225,3 +225,10 @@ __marimo__/
 core/data/*.db
 core/data/*.db-*
 core/reports/generated/
+
+.sdlc/ledger/
+
+# Scratch folders left by an interrupted test run: the sandbox created them
+# with permissions this user cannot change, so Git must not walk into them.
+core/sdlc-gate-*/
+core/probe-*/

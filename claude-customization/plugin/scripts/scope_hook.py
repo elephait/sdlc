@@ -39,8 +39,8 @@ DANGER = "🔴 DANGER"
 # Match the git subcommand itself, so `git log --grep commit` or file text that
 # mentions "git push" is not mistaken for the operation.
 GIT_GLOBALS = r"""(?:\s+(?:-C|-c)\s+(?:"[^"]*"|'[^']*'|\S+)|\s+--?[\w-]+(?:=\S+)?)*"""
-GIT_PUSH = re.compile(rf"(?i)\bgit\b{GIT_GLOBALS}\s+push\b")
-GIT_COMMIT = re.compile(rf"(?i)\bgit\b{GIT_GLOBALS}\s+commit\b")
+GIT_PUSH = re.compile(rf"(?i)\bgit(?:\.exe)?\b{GIT_GLOBALS}\s+push\b")
+GIT_COMMIT = re.compile(rf"(?i)\bgit(?:\.exe)?\b{GIT_GLOBALS}\s+commit\b")
 
 
 def strings(value):
@@ -170,9 +170,20 @@ def commit_title(command: str, cwd: Path) -> str | None:
 
 
 def git_command_cwd(command: str, fallback: Path) -> Path:
+    """Directory from a `-C` that appears before the subcommand.
+
+    A `-C` inside a commit message is data, not a repository selector, so the
+    search is limited to the global options between `git` and its subcommand.
+    """
+    prefix = re.search(
+        rf"(?i)\bgit(?:\.exe)?\b({GIT_GLOBALS})\s+(?:commit|push)\b",
+        command,
+    )
+    if not prefix:
+        return fallback
     match = re.search(
         r"""(?ix)
-        \bgit\b[^\r\n;|]*?\s-C\s+
+        \s-C\s+
         (?:
             "([^"]+)"
             |
@@ -181,7 +192,7 @@ def git_command_cwd(command: str, fallback: Path) -> Path:
             ([^\s;|]+)
         )
         """,
-        command,
+        prefix.group(1),
     )
     if not match:
         return fallback
@@ -193,7 +204,12 @@ def git_command_cwd(command: str, fallback: Path) -> Path:
 def hook_decision(payload: dict[str, object]) -> dict[str, str]:
     tool = str(payload.get("toolName") or payload.get("tool_name") or "")
     tool_input = payload.get("toolArgs", payload.get("tool_input"))
-    tool_text = "\n".join(strings(tool_input))
+    # Content and replacement text are data, not filesystem destinations.
+    path_input = {
+        key: value for key, value in tool_input.items()
+        if key in {"file_path", "path", "notebook_path", "command"}
+    } if isinstance(tool_input, dict) else {}
+    tool_text = "\n".join(strings(path_input))
     # Git operations are judged on the shell command only, never on file
     # content or other arguments that merely mention them.
     command = (
@@ -240,6 +256,12 @@ def hook_decision(payload: dict[str, object]) -> dict[str, str]:
         tool_text,
     )
     if mutating_tool or shell_mutation:
+        if mutating_tool and isinstance(tool_input, dict):
+            for key in ("file_path", "path", "notebook_path"):
+                value = tool_input.get(key)
+                if isinstance(value, str) and not under_dev(ntpath.join(cwd, value)):
+                    decision = "deny"
+                    reason = r"A write destination resolves outside C:\dev."
         candidates = re.findall(
             r"""(?ix)
             ["']([A-Z]:[\\/][^"']+)["']

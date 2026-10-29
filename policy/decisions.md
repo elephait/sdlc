@@ -2,7 +2,7 @@
 
 **Status:** Pilot decisions, not production certification. Updated 2026-10-25.
 
-This file records the strategic decisions and the pilot plan. Operating rules for agents live in [universal.md](universal.md) and [research.md](research.md); update those rather than restating them here. Implementation: [core/README.md](../core/README.md), [copilot-customization](../copilot-customization/README.md), [claude-customization](../claude-customization/README.md).
+This file records the strategic decisions and the pilot plan. Operating rules for agents live in [universal.md](universal.md) and [research.md](research.md); update those rather than restating them here. Implementation: [core/README.md](../core/README.md), [copilot-customization](../copilot-customization/README.md), [claude-customization](../claude-customization/README.md), [Codex](../codex-customization/codex.md).
 
 ## Goal
 

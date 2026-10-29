@@ -56,6 +56,9 @@ def initialize(path: Path = DEFAULT_DB) -> None:
             "last_timestamp",
             "TEXT",
         )
+        # Host attribution arrived after the first databases existed; keep the
+        # migration additive so an active story's evidence is never rewritten.
+        _ensure_column(connection, "sessions", "host", "TEXT")
 
 
 def _ensure_column(

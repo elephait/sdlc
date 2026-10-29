@@ -17,11 +17,15 @@ from .db import DEFAULT_DB, DEV_ROOT, database, initialize, require_under_dev
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 HOOK_SCRIPT_ROOT = PROJECT_ROOT / "scripts"
-DEFAULT_CO_AUTHOR = (
-    os.environ.get("SDLC_CO_AUTHOR")
-    or "Copilot <223556219+Copilot@users.noreply.github.com>"
-)
 DEFAULT_REPORT_ROOT = PROJECT_ROOT / "reports" / "generated"
+TERMINAL_OUTCOMES = {
+    "DONE",
+    "BLOCKED_NEEDS_USER",
+    "FAILED",
+    "STUCK",
+    "LIMIT_REACHED",
+    "SECURITY_STOP",
+}
 TRACKING_STALE_AFTER = timedelta(minutes=15)
 DEFAULT_LEDGER_ROOT = Path(r"C:\dev\common\copilot\sdlc\ledger\stories")
 PROJECT_MARKERS = {
@@ -94,7 +98,10 @@ def onboard_project(
     priority: str = "medium",
     ledger_root: Path | None = None,
     db_path: Path = DEFAULT_DB,
+    tracking_hooks: str = "none",
 ) -> dict[str, Any]:
+    if tracking_hooks not in {"none", "copilot-workspace"}:
+        raise ValueError("tracking_hooks must be none or copilot-workspace")
     resolved_workspace = require_under_dev(workspace, "Workspace")
     if not resolved_workspace.is_dir():
         raise ValueError(f"Workspace does not exist: {resolved_workspace}")
@@ -316,7 +323,10 @@ def onboard_project(
         )
         ledger_story_status = "created"
 
-    tracking_hooks_status = _install_tracking_hooks(resolved_workspace)
+    tracking_hooks_status = (
+        _install_tracking_hooks(resolved_workspace)
+        if tracking_hooks == "copilot-workspace" else "not-installed"
+    )
     record_project_use(resolved_workspace, db_path)
     return {
         "workspace": str(resolved_workspace),
@@ -334,8 +344,8 @@ def onboard_project(
             "trackingHooks": tracking_hooks_status,
         },
         "next": {
-            "startNewCopilotSession": True,
-            "policyActivation": "trackingPendingNewSession",
+            "startNewCopilotSession": tracking_hooks == "copilot-workspace",
+            "policyActivation": "host-managed",
             "analysisCommand": (
                 "python -m copilot_customization.cli tracking-report "
                 f'--workspace "{resolved_workspace}"'
@@ -358,6 +368,7 @@ def _install_tracking_hooks(workspace: Path) -> str:
         for name in (
             "SessionStart",
             "PostToolUse",
+            "PostToolUseFailure",
             "Stop",
         )
     }
@@ -547,6 +558,7 @@ def start_session(
     model: str | None,
     session_id: str | None,
     db_path: Path = DEFAULT_DB,
+    host: str | None = None,
 ) -> str:
     identifier = session_id or str(uuid4())
     with database(db_path) as connection:
@@ -565,10 +577,10 @@ def start_session(
         connection.execute(
             """
             INSERT INTO sessions (
-                session_id, story_id, role, model, started_at
-            ) VALUES (?, ?, ?, ?, ?)
+                session_id, story_id, role, model, host, started_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (identifier, story_id, role, model, now()),
+            (identifier, story_id, role, model, host, now()),
         )
     return identifier
 
@@ -578,8 +590,25 @@ def stop_session(
     outcome: str,
     db_path: Path = DEFAULT_DB,
 ) -> None:
+    if outcome not in TERMINAL_OUTCOMES:
+        raise ValueError(
+            f"Outcome must be one of: {', '.join(sorted(TERMINAL_OUTCOMES))}"
+        )
     with database(db_path) as connection:
-        cursor = connection.execute(
+        row = connection.execute(
+            "SELECT ended_at, outcome FROM sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError(f"Unknown session: {session_id}")
+        if row["ended_at"]:
+            if row["outcome"] == outcome:
+                return
+            raise ValueError(
+                f"Session {session_id} already closed as {row['outcome']}; "
+                "record a new session rather than rewriting its outcome."
+            )
+        connection.execute(
             """
             UPDATE sessions
                SET ended_at = ?, outcome = ?
@@ -587,8 +616,6 @@ def stop_session(
             """,
             (now(), outcome, session_id),
         )
-        if cursor.rowcount != 1:
-            raise ValueError(f"Unknown session: {session_id}")
 
 
 def record_session_review(
@@ -656,6 +683,7 @@ def commit_ready(
     title = message.strip()
     if not title.startswith(("ai commit: ", "ai code review: ")):
         title = f"ai commit: {title}"
+    gates = _enforce_gates(story_id, title, staged_files, db_path)
     policy_command = f'git -C "{repository_root}" commit -m "{title}"'
     policy = _commit_policy_decision(repository_root, policy_command)
     if policy.get("permissionDecision") != "allow":
@@ -669,16 +697,11 @@ def commit_ready(
         )
     except ValueError:
         previous_commit = None
-    _run_git(
-        repository_root,
-        "-c",
-        "commit.gpgsign=false",
-        "commit",
-        "-m",
-        title,
-        "-m",
-        f"Co-authored-by: {co_author or DEFAULT_CO_AUTHOR}",
-    )
+    trailer = co_author or os.environ.get("SDLC_CO_AUTHOR")
+    commit_args = ["commit", "-m", title]
+    if trailer:
+        commit_args.extend(["-m", f"Co-authored-by: {trailer}"])
+    _run_git(repository_root, *commit_args)
     commit_hash = _run_git(repository_root, "rev-parse", "HEAD")
     report = _write_commit_analysis(
         ledger,
@@ -691,12 +714,14 @@ def commit_ready(
         summary,
         findings,
         staged_files,
+        gates,
         db_path,
         validation_summary,
     )
     return {
         "commit": commit_hash,
         "title": title,
+        "gates": gates,
         "analysisReport": report["path"],
         "analysis": report["report"],
     }
@@ -781,8 +806,15 @@ def _commit_policy_decision(
         raise ValueError(
             completed.stderr.strip() or "Commit policy validation failed."
         )
-    output = json.loads(completed.stdout)
-    return output["hookSpecificOutput"]
+    try:
+        output = json.loads(completed.stdout)
+        decision = output["hookSpecificOutput"]
+    except (json.JSONDecodeError, KeyError) as error:
+        raise ValueError(
+            "Commit policy hook returned an unusable response: "
+            + (completed.stderr.strip() or completed.stdout.strip() or "(empty)")
+        ) from error
+    return decision
 
 
 def _active_ledger(active: dict[str, Any], workspace: Path) -> Path:
@@ -804,6 +836,7 @@ def _write_commit_analysis(
     summary: str,
     findings: list[str],
     staged_files: list[str],
+    gates: dict[str, str | None],
     db_path: Path,
     validation_summary: str | None,
 ) -> dict[str, Any]:
@@ -849,6 +882,7 @@ def _write_commit_analysis(
         "scope": "accumulated" if previous is None else "sincePreviousCommit",
         "summary": summary,
         "stagedFiles": staged_files,
+        "gates": gates,
         "importantFindings": important_findings,
         "validation": {
             "status": "recorded" if validation_summary else "notRecorded",
@@ -865,6 +899,7 @@ def _write_commit_analysis(
             repository_root,
             commit_hash,
             staged_files,
+            gates,
             prepared_by,
             generated_at,
             validation_summary,
@@ -881,6 +916,7 @@ def _commit_handoff(
     repository_root: Path,
     commit_hash: str,
     committed_files: list[str],
+    gates: dict[str, str | None],
     prepared_by: str,
     verified_at: str,
     validation_summary: str | None,
@@ -914,6 +950,7 @@ def _commit_handoff(
             "status": "recorded" if validation_summary else "notRecorded",
             "summary": validation_summary,
         },
+        "gates": gates,
         "readme": {
             "path": str(readme),
             "sha256": hashlib.sha256(readme.read_bytes()).hexdigest(),
@@ -1167,6 +1204,10 @@ def _is_stalled(
     session_id: str | None,
     threshold: int = 3,
 ) -> bool:
+    if session_id is None:
+        # A stall is a per-session signal; without a session there is nothing
+        # to count, and `session_id = NULL` would silently return no rows.
+        return False
     rows = connection.execute(
         """
         SELECT meaningful_progress
@@ -1271,6 +1312,200 @@ def record_customization(
             ),
         )
         return int(cursor.lastrowid)
+
+
+GATE_NAMES = ("analysis", "implementation", "review", "customization", "docs")
+GATE_STATUSES = ("passed", "failed", "waived")
+_CUSTOMIZATION_PREFIXES = ("policy/", "skills/", "core/")
+_CUSTOMIZATION_FILES = {"AGENTS.md", "CLAUDE.md", "scripts/sync-customizations.py"}
+
+
+def _is_customization_path(path: str) -> bool:
+    # Strip only a leading "./"; lstrip("./") would eat the dot of ".agents/".
+    normalized = path.replace("\\", "/").removeprefix("./")
+    return bool(
+        normalized.startswith(_CUSTOMIZATION_PREFIXES)
+        or normalized.startswith(".agents/skills/")
+        or "-customization/" in normalized
+        or normalized in _CUSTOMIZATION_FILES
+    )
+
+
+def required_gates(message: str, staged_files: list[str]) -> list[str]:
+    """Gates a commit of this shape must already have passed or waived."""
+    gates = (
+        {"review", "docs"}
+        if message.startswith("ai code review: ")
+        else {"analysis", "implementation"}
+    )
+    if any(_is_customization_path(path) for path in staged_files):
+        gates.add("customization")
+    return sorted(gates)
+
+
+def _resolve_gate_artifact(workspace: Path, ledger: Path, artifact: str) -> Path:
+    raw = Path(artifact)
+    candidates = [raw] if raw.is_absolute() else [workspace / raw, ledger / raw]
+    for candidate in candidates:
+        resolved = require_under_dev(candidate, "Gate artifact")
+        if resolved.is_file():
+            return resolved
+    return require_under_dev(candidates[0], "Gate artifact")
+
+
+def record_gate(
+    workspace: Path,
+    story_id: str,
+    gate: str,
+    status: str = "passed",
+    evidence: str = "",
+    approved_by: str | None = None,
+    artifact: str | None = None,
+    session_id: str | None = None,
+    details: dict[str, Any] | None = None,
+    db_path: Path = DEFAULT_DB,
+) -> dict[str, Any]:
+    """Record one handoff gate and write its reviewable artifact under the ledger.
+
+    A pass or a waiver needs a named approver and evidence; a failed gate keeps
+    the reason and blocks the commit it was meant to authorise.
+    """
+    if gate not in GATE_NAMES:
+        raise ValueError(f"Gate must be one of: {', '.join(GATE_NAMES)}")
+    if status not in GATE_STATUSES:
+        raise ValueError(f"Status must be one of: {', '.join(GATE_STATUSES)}")
+    evidence = (evidence or "").strip()
+    approver = (approved_by or "").strip()
+    if status in {"passed", "waived"}:
+        if not evidence:
+            raise ValueError("A passed or waived gate requires --evidence.")
+        if not approver:
+            raise ValueError("A passed or waived gate requires --approved-by.")
+
+    resolved_workspace = require_under_dev(workspace, "Workspace")
+    active_path = resolved_workspace / ".sdlc" / "active-story.json"
+    if not active_path.is_file():
+        raise ValueError(f"Tracking is not active: {active_path} was not found.")
+    active = json.loads(active_path.read_text(encoding="utf-8-sig"))
+    if str(active.get("storyId")) != story_id:
+        raise ValueError(
+            f"Story {story_id} is not the active story "
+            f"({active.get('storyId')}); gate the active story or fix the ID."
+        )
+    ledger = _active_ledger(active, resolved_workspace)
+
+    artifact_path: str | None = None
+    artifact_sha256: str | None = None
+    if artifact:
+        resolved_artifact = _resolve_gate_artifact(
+            resolved_workspace, ledger, artifact
+        )
+        if status != "failed" and not resolved_artifact.is_file():
+            raise ValueError(f"Gate artifact was not found: {artifact}")
+        artifact_path = str(resolved_artifact)
+        if resolved_artifact.is_file():
+            artifact_sha256 = hashlib.sha256(
+                resolved_artifact.read_bytes()
+            ).hexdigest()
+
+    timestamp = now()
+    gates_dir = ledger / "gates"
+    gates_dir.mkdir(parents=True, exist_ok=True)
+    report_path = gates_dir / f"{gate}.md"
+    lines = [
+        "---",
+        f'storyId: "{story_id}"',
+        f'gate: "{gate}"',
+        f'status: "{status}"',
+        f'approvedBy: "{approver}"',
+        f'recordedAt: "{timestamp}"',
+    ]
+    if artifact_path:
+        lines.append(f'artifact: "{artifact_path}"')
+    if artifact_sha256:
+        lines.append(f'artifactSha256: "{artifact_sha256}"')
+    lines.extend(["---", "", f"# {gate} gate", "", evidence or "(no evidence recorded)"])
+    _atomic_write(report_path, "\n".join(lines) + "\n")
+
+    with database(db_path) as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO gates (
+                story_id, session_id, gate, status, artifact_path,
+                artifact_sha256, evidence, approved_by, recorded_at,
+                details_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                story_id,
+                session_id,
+                gate,
+                status,
+                artifact_path,
+                artifact_sha256,
+                evidence or "(no evidence recorded)",
+                approver or "(not recorded)",
+                timestamp,
+                json.dumps(details, sort_keys=True) if details else None,
+            ),
+        )
+        gate_id = int(cursor.lastrowid)
+    return {
+        "gateId": gate_id,
+        "storyId": story_id,
+        "gate": gate,
+        "status": status,
+        "approvedBy": approver,
+        "artifact": artifact_path,
+        "artifactSha256": artifact_sha256,
+        "report": str(report_path),
+    }
+
+
+def gates_for_story(
+    story_id: str,
+    db_path: Path = DEFAULT_DB,
+) -> dict[str, dict[str, Any]]:
+    """Latest recorded state of each gate for a story."""
+    with database(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT g.*
+              FROM gates g
+              JOIN (
+                    SELECT gate, MAX(gate_id) AS gate_id
+                      FROM gates
+                     WHERE story_id = ?
+                     GROUP BY gate
+                   ) latest
+                ON latest.gate_id = g.gate_id
+            """,
+            (story_id,),
+        ).fetchall()
+    return {row["gate"]: dict(row) for row in rows}
+
+
+def _enforce_gates(
+    story_id: str,
+    message: str,
+    staged_files: list[str],
+    db_path: Path,
+) -> dict[str, str | None]:
+    required = required_gates(message, staged_files)
+    recorded = gates_for_story(story_id, db_path)
+    missing = []
+    for gate in required:
+        status = (recorded.get(gate) or {}).get("status", "missing")
+        if status not in {"passed", "waived"}:
+            missing.append(f"{gate} ({status})")
+    if missing:
+        raise ValueError(
+            "Missing required handoff gate(s): "
+            + ", ".join(missing)
+            + ". Record each with `gate --gate <name> --evidence <what was checked> "
+            "--approved-by <who approved>`; a waiver needs an approver and a reason."
+        )
+    return {gate: (recorded.get(gate) or {}).get("status") for gate in required}
 
 
 def import_jsonl(
@@ -1675,6 +1910,7 @@ def _recent_story_sessions(
             SELECT s.session_id,
                    s.role,
                    s.model,
+                   s.host,
                    s.started_at,
                    s.ended_at,
                    s.outcome,
@@ -1714,6 +1950,7 @@ def _recent_story_sessions(
              GROUP BY s.session_id,
                       s.role,
                       s.model,
+                      s.host,
                       s.started_at,
                       s.ended_at,
                       s.outcome
@@ -1728,6 +1965,7 @@ def _recent_story_sessions(
                 "sessionId": row["session_id"],
                 "role": row["role"],
                 "model": row["model"],
+                "host": row["host"],
                 "startedAt": row["started_at"],
                 "endedAt": row["ended_at"],
                 "outcome": row["outcome"],

@@ -1,16 +1,27 @@
 ---
 name: tracked-story
-description: "Use when delivering a business story with traceability: clarify intent, implement, review fresh, reach commit readiness ('ready to commit'), then commit locally with an evidence report; tracking, ledger and scorecard work."
+description: "Use when delivering a business story with traceability: analyze and get acceptance, implement, review, reconcile the README, then commit locally with authorization and a gate-backed evidence report."
 ---
 
 # Tracked story
 
-Follow the SDLC policy for authority, readiness and commit rules; this skill only orders the work. One story, or one independently deliverable subtask, per tracked workflow. The `copilot-sdlc` CLI is the shared, host-neutral backend despite its name.
+The SDLC policy (`policy/universal.md` in the repository) owns authority, commit and evidence rules; this skill orders the work and names the artifact each handoff produces. One story, or one independently deliverable subtask, per workflow. `copilot-sdlc` is the shared, host-neutral CLI despite its name; run it through `python scripts/sdlc.py` in this repository or by absolute path elsewhere.
 
-1. **Intake.** If the story is shallow or the user wants it deepened, refine it with `/better` in prompt-improvement mode (rewrite the story, do not execute it) before implementing; the user must invoke it. Normalize intent, acceptance criteria, dependencies, assumptions and open questions. Classify the work as proof of concept or enterprise-governed.
-2. **Sessions.** Prefer separate sessions for intake, implementation, fresh review, corrections and publication. When a session cannot be created, write a compact handoff: story revision, accepted intent, decisions, constraints, required validation.
-3. **Record** sessions, tools, failures, resolutions, decisions, customization versions, models and outcomes with the CLI.
-4. **Review loop.** Review statically and fix until no actionable finding remains or the user accepts the residual risk. Save the verdict, fixes, residual risks, validation state and any customization follow-up under the story's `reviews`.
-5. **Readiness gate.** Ask the single readiness question from the policy.
-6. **Commit.** After explicit readiness, validate and format as the policy says, reconcile the README (current operation, architecture, limitations only) and the detailed story with the code, stage only reviewed files, then run `copilot-sdlc commit-ready` with a chat-derived summary, the important findings, a commit-specific `--validation-summary` when validation ran, and the host's co-author trailer in `--co-author`. The backend makes one local commit and a content-hashed handoff report: the first summarizes all recorded evidence, later ones only new findings and metric deltas.
-7. **Publication** is the user's operation: never push; tell the user the commit is ready.
+Record each handoff as it closes. `commit-ready` refuses while a gate it needs is missing, so a gate recorded late is a claim without evidence.
+
+1. **Analysis and acceptance** (`analysis`). Write the intent, acceptance criteria, assumptions, out-of-scope and risks into the story or an `analysis.md` beside it. Ask the user to accept them, then record the gate with that artifact and the approver. No implementation before acceptance unless the user explicitly accepts the risk of starting without it.
+
+2. **Implementation** (`implementation`). Implement the narrowest change, run focused validation, then report what ran and what did not. Ask for commit authorization for this task. Record the gate with the validation evidence and the approver. Stage only reviewed files, then run `commit-ready` with an `ai commit: ` title; it writes the handoff report.
+
+3. **Review** (`review`). Prefer a fresh reviewer session. Save findings, dispositions and residual risk under the story's `reviews/`, bounded to three rounds. Record the gate with that review file, then commit fixes with an `ai code review: ` title. If nothing actionable remains, record the verdict and stop.
+
+4. **Customization** (`customization`). Required when the change touches `policy/`, `skills/`, `core/` or any `*-customization/` folder: name the layer that changed, run `python scripts/sync-customizations.py` and `python scripts/verify.py`, and record the gate with the drift-check result.
+
+5. **Documentation** (`docs`). Reconcile the end-user README with current operation, architecture and limits, then record the gate with the README path. This closes the story before publication.
+
+6. **Handoff.** Publication is the user's operation: never push. End with outcome, changes, evidence and limits, and use `DONE`, `BLOCKED_NEEDS_USER`, `FAILED`, `STUCK`, `LIMIT_REACHED` or `SECURITY_STOP` accurately.
+
+```powershell
+python scripts/sdlc.py gate --story SDLC-001 --gate analysis --artifact .sdlc/analysis.md --evidence "Criteria accepted in chat" --approved-by "<user>"
+python scripts/sdlc.py commit-ready --workspace . --message "ai commit: <summary>" --prepared-by Codex --summary "<reviewed change>" --validation-summary "<checks run>" --co-author "Codex <noreply@openai.com>"
+```

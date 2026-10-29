@@ -13,17 +13,17 @@ validation:
   compile:
     command: python -m compileall -q core/src core/scripts scripts
   test:
-    command: python -m unittest discover -s core/tests -v
+    command: python scripts/verify.py
   sync:
     command: python scripts/sync-customizations.py --check
   smoke:
     command: python scripts/validate-skills.py
 
 git:
-  pushRequiresApproval: true
-  localCommitRequiresApproval: false
+  pushByAgentAllowed: false
+  localCommitRequiresApproval: true
   destructiveOperationsAllowed: false
 
 tracking:
-  storyId: COPILOT-CUSTOMIZATION-001
-  ledgerPath: 'C:\dev\common\copilot\sdlc\ledger\stories\copilot-customization\COPILOT-CUSTOMIZATION-001'
+  storyId: SDLC-001
+  ledgerPath: 'C:\dev\common\copilot\sdlc\ledger\stories\sdlc\SDLC-001'

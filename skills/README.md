@@ -7,7 +7,7 @@ Reusable agent skills, one directory per skill, in the flat `skills/<name>/SKILL
 | Skill | Reach for it when |
 |---|---|
 | [distributed-service-design-review](distributed-service-design-review/SKILL.md) | Reviewing or designing a distributed service or REST API: consistency, delivery and ordering guarantees, idempotency, transactions, resilience, cost, security, observability, deployment. |
-| [tracked-story](tracked-story/SKILL.md) | Delivering a story with traceable review, a readiness gate and a local commit report (the SDLC workflow). |
+| [tracked-story](tracked-story/SKILL.md) | Delivering a story through the five handoff gates (analysis, implementation, review, customization, docs), each with evidence and a named approver, ending in a local commit report. |
 
 ## Using a skill
 
@@ -17,12 +17,12 @@ Agents discover a skill from its `SKILL.md` frontmatter when this directory is o
 - Claude Code: `/distributed-service-design-review`, or `/sdlc:distributed-service-design-review` through the plugin
 - Copilot: through the plugin in `copilot-customization/plugin`
 
-This directory is the only place to edit a skill. The Copilot and Claude plugins carry generated copies made by `python scripts/sync-customizations.py`; never edit those.
+This directory is the only place to edit a skill. The Copilot and Claude plugins and Codex `.agents/skills/` carry generated copies made by `python scripts/sync-customizations.py`; never edit those.
 
 ## Adding a skill
 
 1. Create `skills/<kebab-name>/SKILL.md` with `name` matching the directory and a model-facing `description` that carries the phrases a user would actually say.
-2. Add `agents/openai.yaml` (Codex only; the sync leaves it out of the plugins) with `interface.display_name`, `interface.short_description` (25 to 64 characters) and a `default_prompt` that names `$<name>`.
+2. Add `agents/openai.yaml` (Codex only; the sync retains it for Codex and leaves it out of the other plugins) with `interface.display_name`, `interface.short_description` (25 to 64 characters) and a `default_prompt` that names `$<name>`.
 3. Put material only some runs need in `references/`, reached by relative link; put realistic review fixtures in `evals/`.
 4. Run `python scripts/sync-customizations.py`, then `python scripts/validate-skills.py`, then re-read the skill with the writing guidance in mind: one meaning in one place, trigger wording in the description, nothing an agent already does by default.
 

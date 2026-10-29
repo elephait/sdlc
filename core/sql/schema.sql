@@ -198,3 +198,34 @@ CREATE TABLE IF NOT EXISTS project_usage (
     last_used_at TEXT NOT NULL,
     use_count INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS gates (
+    gate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    story_id TEXT NOT NULL REFERENCES stories(story_id),
+    session_id TEXT REFERENCES sessions(session_id),
+    gate TEXT NOT NULL
+        CHECK (gate IN ('analysis', 'implementation', 'review', 'customization', 'docs')),
+    status TEXT NOT NULL
+        CHECK (status IN ('passed', 'failed', 'waived')),
+    artifact_path TEXT,
+    artifact_sha256 TEXT,
+    evidence TEXT NOT NULL,
+    approved_by TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    details_json TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_gates_story_gate
+    ON gates(story_id, gate, recorded_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_gates_session_story_insert
+BEFORE INSERT ON gates
+WHEN NEW.session_id IS NOT NULL
+ AND NOT EXISTS (
+     SELECT 1 FROM sessions s
+      WHERE s.session_id = NEW.session_id
+        AND s.story_id = NEW.story_id
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'gate session does not belong to story');
+END;
