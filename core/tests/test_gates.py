@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 import sys
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from copilot_customization.db import database
@@ -147,17 +149,22 @@ class GateWorkflowTests(unittest.TestCase):
         )
         self.assertEqual("passed", result["gates"]["customization"])
 
-    def test_generated_skill_and_dot_prefixed_paths_require_customization(self) -> None:
+    def test_generated_skill_dot_prefixed_and_launcher_paths_require_customization(self) -> None:
         self.assertEqual(
             ["analysis", "customization", "implementation"],
             required_gates(
                 "ai commit: skills",
-                [".agents/skills/tracked-story/SKILL.md", "./core/a.py"],
+                [
+                    ".agents/skills/tracked-story/SKILL.md",
+                    "./core/a.py",
+                    "scripts/onboard.py",
+                    "onboard.cmd",
+                ],
             ),
         )
         self.assertEqual(
             ["analysis", "implementation"],
-            required_gates("ai commit: plain", ["README.md", "scripts/reports.py"]),
+            required_gates("ai commit: plain", ["README.md", "md/notes.md"]),
         )
 
     def test_waiver_counts_as_satisfied_and_is_recorded(self) -> None:
@@ -215,6 +222,63 @@ class GateWorkflowTests(unittest.TestCase):
         self.assertIn('gate: "analysis"', text)
         self.assertIn('approvedBy: "fixture user"', text)
         self.assertEqual(64, len(record["artifactSha256"]))
+
+    def test_gates_go_stale_after_a_commit(self) -> None:
+        self.gate("analysis")
+        self.gate("implementation")
+        commit_ready(self.workspace, "ai commit: first", "test", "summary", [], self.db)
+
+        self.write("README.md", "# Fixture\n\nSecond change.\n")
+        self.git("add", "README.md")
+        with self.assertRaisesRegex(
+            ValueError, r"implementation \(stale: recorded for"
+        ):
+            commit_ready(
+                self.workspace, "ai commit: second", "test", "summary", [], self.db
+            )
+
+        # Analysis is story-level: it stays valid without a re-record.
+        self.gate("implementation")
+        result = commit_ready(
+            self.workspace, "ai commit: second", "test", "summary", [], self.db
+        )
+        self.assertEqual("passed", result["gates"]["implementation"])
+
+    def test_staged_tree_change_invalidates_implementation_gate(self) -> None:
+        self.gate("analysis")
+        self.gate("implementation")
+        self.write("extra.txt", "staged after the gate\n")
+        self.git("add", "extra.txt")
+        with self.assertRaisesRegex(
+            ValueError, r"implementation \(stale: staged tree"
+        ):
+            commit_ready(
+                self.workspace, "ai commit: tree", "test", "summary", [], self.db
+            )
+
+        self.gate("implementation")
+        result = commit_ready(
+            self.workspace, "ai commit: tree", "test", "summary", [], self.db
+        )
+        self.assertEqual("passed", result["gates"]["implementation"])
+
+    def test_gate_writes_migrate_a_legacy_gates_table(self) -> None:
+        with closing(sqlite3.connect(self.db)) as connection:
+            connection.execute("ALTER TABLE gates DROP COLUMN head_commit")
+            connection.execute("ALTER TABLE gates DROP COLUMN tree_hash")
+            connection.commit()
+        record = self.gate("implementation")
+        self.assertRegex(record["treeHash"], r"^[0-9a-f]{40,64}$")
+        stored = gates_for_story("TEST-001", self.db)["implementation"]
+        self.assertEqual(record["treeHash"], stored["tree_hash"])
+
+    def test_tree_bound_gate_report_records_the_staged_tree(self) -> None:
+        record = self.gate("implementation")
+        report = Path(record["report"]).read_text(encoding="utf-8")
+        self.assertRegex(record["treeHash"], r"^[0-9a-f]{40,64}$")
+        self.assertIn("treeHash:", report)
+        self.assertNotIn("headCommit:", report)
+        self.assertIsNone(self.gate("analysis", evidence="intent accepted")["treeHash"])
 
 
 if __name__ == "__main__":

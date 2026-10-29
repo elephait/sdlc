@@ -212,6 +212,8 @@ CREATE TABLE IF NOT EXISTS gates (
     evidence TEXT NOT NULL,
     approved_by TEXT NOT NULL,
     recorded_at TEXT NOT NULL,
+    head_commit TEXT,
+    tree_hash TEXT,
     details_json TEXT
 );
 

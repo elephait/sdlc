@@ -59,6 +59,10 @@ def initialize(path: Path = DEFAULT_DB) -> None:
         # Host attribution arrived after the first databases existed; keep the
         # migration additive so an active story's evidence is never rewritten.
         _ensure_column(connection, "sessions", "host", "TEXT")
+        # Gate freshness arrived later too: HEAD and staged tree pin a gate to
+        # the exact repository state it approved.
+        _ensure_column(connection, "gates", "head_commit", "TEXT")
+        _ensure_column(connection, "gates", "tree_hash", "TEXT")
 
 
 def _ensure_column(

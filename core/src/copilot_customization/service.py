@@ -718,26 +718,32 @@ def commit_ready(
     _validate_readme_state(resolved_workspace, repository_root)
     ledger = _active_ledger(active, resolved_workspace)
     _validate_handoff_inputs(resolved_workspace, ledger)
+    previous_commit = _head_commit(repository_root)
+    staged_tree = _staged_tree(repository_root)
 
     trailer = co_author or os.environ.get("SDLC_CO_AUTHOR")
     title = named_title(
         message,
         ai_label(ai_name, os.environ.get("SDLC_AI_NAME"), trailer, prepared_by),
     )
-    gates = _enforce_gates(story_id, title, staged_files, db_path)
+    gates = _enforce_gates(
+        story_id, title, staged_files, db_path, previous_commit, staged_tree
+    )
     policy_command = f'git -C "{repository_root}" commit -m "{title}"'
     policy = _commit_policy_decision(repository_root, policy_command)
     if policy.get("permissionDecision") != "allow":
         raise ValueError(str(policy.get("permissionDecisionReason")))
 
-    try:
-        previous_commit: str | None = _run_git(
-            repository_root,
-            "rev-parse",
-            "HEAD",
+    # Another process may have committed or staged files while the gates were
+    # being checked; refuse to commit a tree the recorded gates did not cover.
+    if _head_commit(repository_root) != previous_commit or (
+        _staged_tree(repository_root) != staged_tree
+    ):
+        raise ValueError(
+            "HEAD or the staged tree changed while commit-ready was running "
+            "(another process committed or staged files). Re-record the gates "
+            "for the current stage and retry."
         )
-    except ValueError:
-        previous_commit = None
     commit_args = ["commit", "-m", title]
     if trailer:
         commit_args.extend(["-m", f"Co-authored-by: {trailer}"])
@@ -1356,8 +1362,18 @@ def record_customization(
 
 GATE_NAMES = ("analysis", "implementation", "review", "customization", "docs")
 GATE_STATUSES = ("passed", "failed", "waived")
-_CUSTOMIZATION_PREFIXES = ("policy/", "skills/", "core/")
-_CUSTOMIZATION_FILES = {"AGENTS.md", "CLAUDE.md", "scripts/sync-customizations.py"}
+# Gates that attest to the exact staged content, not just the story's intent.
+TREE_BOUND_GATES = {"implementation", "customization"}
+# Intent and acceptance outlive a single commit; they are not re-recorded.
+STORY_LEVEL_GATES = {"analysis"}
+_CUSTOMIZATION_PREFIXES = ("policy/", "skills/", "core/", "scripts/")
+_CUSTOMIZATION_FILES = {
+    "AGENTS.md",
+    "CLAUDE.md",
+    "onboard.cmd",
+    "onboard-all.cmd",
+    "reports.cmd",
+}
 
 
 def _is_customization_path(path: str) -> bool:
@@ -1391,6 +1407,35 @@ def _resolve_gate_artifact(workspace: Path, ledger: Path, artifact: str) -> Path
         if resolved.is_file():
             return resolved
     return require_under_dev(candidates[0], "Gate artifact")
+
+
+def _head_commit(cwd: Path) -> str | None:
+    try:
+        return _run_git(cwd, "rev-parse", "HEAD")
+    except ValueError:
+        return None
+
+
+def _staged_tree(cwd: Path) -> str | None:
+    try:
+        return _run_git(cwd, "write-tree")
+    except ValueError:
+        return None
+
+
+def _gate_baseline(workspace: Path) -> tuple[str | None, str | None]:
+    """HEAD and staged-tree hashes of the repository containing `workspace`.
+
+    `git write-tree` is resolved from the repository root because it is
+    prefix-sensitive when run from a subdirectory. A workspace that is not a
+    Git repository (or has no commit yet) yields `None`, which still compares
+    equal for fixtures without history.
+    """
+    try:
+        root = Path(_run_git(workspace, "rev-parse", "--show-toplevel")).resolve()
+    except ValueError:
+        return None, None
+    return _head_commit(root), _staged_tree(root)
 
 
 def record_gate(
@@ -1433,6 +1478,10 @@ def record_gate(
             f"({active.get('storyId')}); gate the active story or fix the ID."
         )
     ledger = _active_ledger(active, resolved_workspace)
+    initialize(db_path)
+    head_commit, staged_tree = _gate_baseline(resolved_workspace)
+    if gate not in TREE_BOUND_GATES:
+        staged_tree = None
 
     artifact_path: str | None = None
     artifact_sha256: str | None = None
@@ -1460,6 +1509,10 @@ def record_gate(
         f'approvedBy: "{approver}"',
         f'recordedAt: "{timestamp}"',
     ]
+    if head_commit:
+        lines.append(f'headCommit: "{head_commit}"')
+    if staged_tree:
+        lines.append(f'treeHash: "{staged_tree}"')
     if artifact_path:
         lines.append(f'artifact: "{artifact_path}"')
     if artifact_sha256:
@@ -1473,8 +1526,8 @@ def record_gate(
             INSERT INTO gates (
                 story_id, session_id, gate, status, artifact_path,
                 artifact_sha256, evidence, approved_by, recorded_at,
-                details_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                head_commit, tree_hash, details_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 story_id,
@@ -1486,6 +1539,8 @@ def record_gate(
                 evidence or "(no evidence recorded)",
                 approver or "(not recorded)",
                 timestamp,
+                head_commit,
+                staged_tree,
                 json.dumps(details, sort_keys=True) if details else None,
             ),
         )
@@ -1498,6 +1553,8 @@ def record_gate(
         "approvedBy": approver,
         "artifact": artifact_path,
         "artifactSha256": artifact_sha256,
+        "headCommit": head_commit,
+        "treeHash": staged_tree,
         "report": str(report_path),
     }
 
@@ -1507,6 +1564,7 @@ def gates_for_story(
     db_path: Path = DEFAULT_DB,
 ) -> dict[str, dict[str, Any]]:
     """Latest recorded state of each gate for a story."""
+    initialize(db_path)
     with database(db_path) as connection:
         rows = connection.execute(
             """
@@ -1530,20 +1588,36 @@ def _enforce_gates(
     message: str,
     staged_files: list[str],
     db_path: Path,
+    head_commit: str | None,
+    tree_hash: str | None,
 ) -> dict[str, str | None]:
     required = required_gates(message, staged_files)
     recorded = gates_for_story(story_id, db_path)
     missing = []
     for gate in required:
-        status = (recorded.get(gate) or {}).get("status", "missing")
+        record = recorded.get(gate) or {}
+        status = record.get("status", "missing")
+        recorded_head = record.get("head_commit") or None
+        recorded_tree = record.get("tree_hash") or None
         if status not in {"passed", "waived"}:
             missing.append(f"{gate} ({status})")
+        elif gate not in STORY_LEVEL_GATES and recorded_head != head_commit:
+            missing.append(
+                f"{gate} (stale: recorded for "
+                f"{recorded_head or 'no commit'}, HEAD is "
+                f"{head_commit or 'no commit'})"
+            )
+        elif gate in TREE_BOUND_GATES and recorded_tree != tree_hash:
+            missing.append(
+                f"{gate} (stale: staged tree changed since the gate was recorded)"
+            )
     if missing:
         raise ValueError(
-            "Missing required handoff gate(s): "
+            "Missing or stale required handoff gate(s): "
             + ", ".join(missing)
-            + ". Record each with `gate --gate <name> --evidence <what was checked> "
-            "--approved-by <who approved>`; a waiver needs an approver and a reason."
+            + ". Stage the reviewed files, then record each gate with "
+            "`gate --gate <name> --evidence <what was checked> --approved-by "
+            "<who approved>`; a waiver needs an approver and a reason."
         )
     return {gate: (recorded.get(gate) or {}).get("status") for gate in required}
 
