@@ -188,6 +188,18 @@ class HostWorkflowTests(unittest.TestCase):
             cwd=self.workspace, capture_output=True, text=True)
         self.assertEqual(0, completed.returncode, completed.stderr)
 
+    def test_single_project_launcher_onboards_a_fresh_git_project(self) -> None:
+        subprocess.run(["git", "-C", str(self.workspace), "init"],
+                       check=True, capture_output=True)
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/onboard.py"),
+             "--workspace", str(self.workspace), "--db", str(self.db)],
+            cwd=self.workspace, capture_output=True, text=True,
+        )
+        self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
+        self.assertTrue((self.workspace / ".sdlc/active-story.json").is_file())
+        self.assertTrue((self.workspace / "AGENTS.md").is_file())
+
     def test_commit_workflow_respects_required_git_signing(self) -> None:
         self.onboard()
 

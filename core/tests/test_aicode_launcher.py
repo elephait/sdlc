@@ -52,7 +52,7 @@ class AICodeLauncherTests(unittest.TestCase):
                         output_fn=lambda _: None,
                     ),
                 )
-                onboard.assert_called_once_with(project, [])
+                onboard.assert_called_once_with(project, ["--db", str(ROOT / "test.db")])
 
         with patch.object(launcher, "recent_project_folders", return_value=recent), \
                 patch.object(launcher, "current_git_root", return_value=ROOT), \
@@ -79,7 +79,7 @@ class AICodeLauncherTests(unittest.TestCase):
                     output_fn=lambda _: None,
                 ),
             )
-            onboard_all.assert_called_once_with(ROOT.parent.resolve(), [])
+            onboard_all.assert_called_once_with(ROOT.parent.resolve(), ["--db", str(ROOT / "test.db")])
 
     def test_menu_displays_the_requested_numbering(self) -> None:
         recent = [ROOT.parent / f"project-{index}" for index in range(1, 10)]
@@ -140,7 +140,22 @@ class AICodeLauncherTests(unittest.TestCase):
                     output_fn=lambda _: None,
                 ),
             )
-        onboard.assert_called_once_with(current, [])
+        onboard.assert_called_once_with(current, ["--db", str(ROOT / "test.db")])
+
+    def test_menu_preserves_explicit_database_and_tracking_only_option(self) -> None:
+        database = ROOT / "chosen.db"
+        original = launcher.interactive
+        with patch.object(launcher, "recent_project_folders", return_value=[ROOT]), \
+                patch.object(launcher, "current_git_root", return_value=ROOT), \
+                patch.object(launcher, "onboard_project", return_value=0) as onboard, \
+                redirect_stdout(StringIO()):
+            # interactive's default input binding is fixed at import time.
+            with patch.object(launcher, "interactive", wraps=lambda db, forwarded: original(
+                db, input_fn=self.answers("1", "E"), output_fn=lambda _: None,
+                forwarded=forwarded,
+            )):
+                self.assertEqual(0, launcher.main(["--db", str(database), "--skip-refresh"]))
+        onboard.assert_called_once_with(ROOT, ["--db", str(database), "--skip-refresh"])
 
     def test_bare_report_selection_defaults_to_five(self) -> None:
         with patch.object(launcher, "recent_project_folders", return_value=[]), \

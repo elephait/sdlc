@@ -44,7 +44,7 @@ class OnboardLauncherTests(unittest.TestCase):
 
     def test_without_workspace_the_project_is_chosen_before_any_step(self):
         chosen = ROOT.parent / "other-project"
-        ok = subprocess.CompletedProcess([], 0)
+        ok = subprocess.CompletedProcess([], 0, stdout="")
         with patch.object(launcher, "select_project_folder", return_value=chosen) as select, \
                 patch.object(launcher.sys.stdin, "isatty", return_value=True), \
                 patch.object(launcher.subprocess, "run", return_value=ok) as run:
@@ -53,12 +53,14 @@ class OnboardLauncherTests(unittest.TestCase):
         select.assert_called_once()
         tracking = run.call_args_list[-1].args[0]
         self.assertEqual(str(chosen), tracking[tracking.index("--workspace") + 1])
-        # The SDLC-specific default intent is not applied to another project.
-        self.assertNotIn("--intent", tracking)
+        # A new project gets an adoption intent, not the SDLC-specific intent.
+        self.assertNotIn(launcher.SDLC_INTENT, tracking)
+        self.assertIn("--repository", tracking)
+        self.assertIn("--story", tracking)
 
     def test_noninteractive_without_history_defaults_to_current_folder(self):
         current = ROOT.parent / "current-project"
-        ok = subprocess.CompletedProcess([], 0)
+        ok = subprocess.CompletedProcess([], 0, stdout="")
         with patch.object(launcher, "recent_project_folders", return_value=[]), \
                 patch.object(launcher.Path, "cwd", return_value=current), \
                 patch.object(launcher.sys.stdin, "isatty", return_value=False), \

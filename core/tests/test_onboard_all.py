@@ -120,6 +120,36 @@ class OnboardAllTests(unittest.TestCase):
         self.assertFalse((fresh / ".sdlc").exists())
         self.assertFalse((self.root / ".sdlc-ledger").exists())
 
+    def test_full_onboarding_installs_adapters_into_each_project(self) -> None:
+        fresh = self.project("fresh")
+        tracked = self.project("tracked", tracked=True)
+        with redirect_stdout(StringIO()):
+            code = self.module.main(["--root", str(self.root), "--db", str(self.db)])
+        self.assertEqual(0, code)
+        for project in (fresh, tracked):
+            self.assertTrue((project / "AGENTS.md").is_file())
+            self.assertTrue((project / ".agents/skills/tracked-story/SKILL.md").is_file())
+
+    def test_install_failure_prevents_tracking_that_project(self) -> None:
+        fresh = self.project("fresh")
+        with patch.object(self.module, "run", side_effect=[0, 7]), \
+                redirect_stdout(StringIO()):
+            code = self.module.main(["--root", str(self.root), "--db", str(self.db)])
+        self.assertEqual(1, code)
+        self.assertFalse((fresh / ".sdlc").exists())
+
+    def test_existing_configured_identity_survives_directory_and_remote_names(self) -> None:
+        project = self.project("checkout-name", tracked=True)
+        active = project / ".sdlc/active-story.json"
+        data = json.loads(active.read_text(encoding="utf-8"))
+        data.update(project="logical-project", repository="team/original")
+        Path(data["ledgerPath"]).mkdir(parents=True)
+        active.write_text(json.dumps(data), encoding="utf-8")
+        before = active.read_bytes()
+        code, output = self.run_all()
+        self.assertEqual(0, code, output)
+        self.assertEqual(before, active.read_bytes())
+
     def test_dry_run_without_skip_refresh_never_runs_mutating_steps(self) -> None:
         fresh = self.project("fresh")
         with patch.object(self.module, "run") as run, \

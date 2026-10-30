@@ -88,6 +88,27 @@ def create_story(
         )
 
 
+def onboarding_identity(workspace: Path) -> tuple[str, str]:
+    """Preserve configured identities; infer defaults only for new projects."""
+    config = workspace / ".sdlc/project.yaml"
+    values = _read_project_values(config) if config.is_file() else {}
+    binding = workspace / ".sdlc/active-story.json"
+    active = json.loads(binding.read_text(encoding="utf-8-sig")) if binding.is_file() else {}
+    repository = values.get("repository") or active.get("repository")
+    if not repository:
+        completed = subprocess.run(
+            ["git", "-C", str(workspace), "remote", "get-url", "origin"],
+            text=True, capture_output=True, check=False,
+        )
+        match = re.search(
+            r"[/:]([^/:]+/[^/]+?)(?:\.git)?$", completed.stdout.strip()
+        ) if completed.returncode == 0 else None
+        repository = match.group(1) if match else f"local/{workspace.name}"
+    stem = re.sub(r"[^A-Za-z0-9]+", "-", workspace.name).strip("-").upper() or "PROJECT"
+    story = active.get("storyId") or values.get("storyId") or f"{stem}-001"
+    return str(repository), str(story)
+
+
 def onboard_project(
     workspace: Path,
     project: str | None = None,
@@ -1483,6 +1504,9 @@ def run_verify(workspace: Path) -> dict[str, Any]:
             "unstaged changes before using --run-verify."
         )
     tree_before = _staged_tree(root)
+    # The verifier itself must be part of the tree being approved.
+    _run_git(root, "ls-files", "--error-unmatch", "scripts/verify.py")
+    head_before = _head_commit(root)
     try:
         completed = subprocess.run(
             [sys.executable, str(script)],
@@ -1499,6 +1523,16 @@ def run_verify(workspace: Path) -> dict[str, Any]:
         raise ValueError(
             "The staged tree changed while verify.py ran, so its result does "
             "not describe the commit. Stage first, then retry."
+        )
+    dirty_after = subprocess.run(
+        ["git", "-C", str(root), "diff", "--quiet"],
+        capture_output=True,
+        check=False,
+    )
+    if dirty_after.returncode != 0 or _head_commit(root) != head_before:
+        raise ValueError(
+            "HEAD or the working tree changed while verify.py ran; "
+            "its result cannot approve the staged content. Stage and retry."
         )
     output = (completed.stdout or "") + (completed.stderr or "")
     match = re.search(r"Ran (\d+) tests?", output)

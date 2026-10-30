@@ -80,6 +80,10 @@ This command commits the current index and writes a handoff report. It does not 
 
 Run `aicode.cmd` and select the project. Onboarding refreshes a managed block in that project's `AGENTS.md` and the shared skill folders in `.agents/skills/` while preserving unrelated instructions and skills. Use the CLI wrapper from this checkout with that project's `--workspace`, repository and story identity.
 
+`aicode.cmd --all` installs these customizations into the current Git project and its immediate child Git projects; `--skip-refresh` refreshes tracking only. The installed `AGENTS.md` records the absolute source checkout and shared CLI path, so SDLC commands and research guidance resolve from the selected project. Refresh after moving the SDLC checkout. A colliding, unmanaged skill is refused before installation; review or relocate that skill explicitly. Managed refreshes preserve extra project files. Older skill installations without an ownership manifest are adopted only if they exactly match the current shared payload.
+
+For project improvement, record actual validation results, confirmed review findings and intervention or retry evidence through the shared CLI. Compare project reports before proposing a focused instruction, skill or check change, and validate its effect against the same acceptance criteria. This integration has no automatic Codex tool capture or token accounting; report missing metrics explicitly and do not claim an autonomous improvement loop.
+
 ## Verify host activation
 
 In a new chat rooted here, ask Codex to identify its repository instructions and list `$tracked-story` and `$distributed-service-design-review`. Invoke the latter on a small design question. Local checks verify generated content and Python behavior; they cannot certify discovery in an already-running app session.

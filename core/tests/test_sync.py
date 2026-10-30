@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -35,6 +37,10 @@ class GeneratedFilesTests(unittest.TestCase):
             self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
             self.assertIn("# Project instructions", agents.read_text(encoding="utf-8"))
             self.assertIn("BEGIN DENISTEK SDLC", agents.read_text(encoding="utf-8"))
+            self.assertIn(
+                (ROOT / "scripts/sdlc.py").as_posix(),
+                agents.read_text(encoding="utf-8"),
+            )
             self.assertTrue(
                 (workspace / ".github/instructions/sdlc.instructions.md").is_file()
             )
@@ -151,6 +157,52 @@ class GeneratedFilesTests(unittest.TestCase):
             self.assertNotEqual(0, completed.returncode)
             self.assertIn("Refusing to overwrite unmanaged Claude rule", completed.stderr)
             self.assertEqual("# User-owned rule\n", rule.read_text(encoding="utf-8"))
+
+    def test_workspace_install_refuses_colliding_user_skill_before_writing(self) -> None:
+        for host in (".agents", ".github", ".claude"):
+            with self.subTest(host=host), tempfile.TemporaryDirectory() as temporary:
+                workspace = Path(temporary)
+                skill = workspace / host / "skills/tracked-story/SKILL.md"
+                skill.parent.mkdir(parents=True)
+                skill.write_text("# My own workflow\n", encoding="utf-8")
+                completed = subprocess.run(
+                    [sys.executable, str(SYNC), "--workspace", str(workspace)],
+                    text=True, capture_output=True, cwd=ROOT,
+                )
+                self.assertNotEqual(0, completed.returncode)
+                self.assertIn("unmanaged skill", completed.stderr)
+                self.assertEqual("# My own workflow\n", skill.read_text(encoding="utf-8"))
+                self.assertFalse((workspace / "AGENTS.md").exists())
+
+    def test_workspace_skill_refresh_preserves_user_added_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            command = [sys.executable, str(SYNC), "--workspace", str(workspace)]
+            first = subprocess.run(command, text=True, capture_output=True, cwd=ROOT)
+            self.assertEqual(0, first.returncode, first.stderr)
+            extra = workspace / ".agents/skills/tracked-story/project-notes.md"
+            extra.write_text("Keep this project note\n", encoding="utf-8")
+            stale = extra.parent / "old-managed.md"
+            stale.write_text("obsolete managed file\n", encoding="utf-8")
+            manifest = extra.parent / ".sdlc-managed.json"
+            names = json.loads(manifest.read_text(encoding="utf-8"))
+            manifest.write_text(json.dumps(names + [stale.name]), encoding="utf-8")
+            second = subprocess.run(command, text=True, capture_output=True, cwd=ROOT)
+            self.assertEqual(0, second.returncode, second.stderr)
+            self.assertEqual("Keep this project note\n", extra.read_text(encoding="utf-8"))
+            self.assertFalse(stale.exists())
+
+    def test_workspace_install_adopts_an_identical_legacy_skill(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            destination = workspace / ".agents/skills/tracked-story"
+            shutil.copytree(ROOT / "skills/tracked-story", destination)
+            completed = subprocess.run(
+                [sys.executable, str(SYNC), "--workspace", str(workspace)],
+                text=True, capture_output=True, cwd=ROOT,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertTrue((destination / ".sdlc-managed.json").is_file())
 
 
 if __name__ == "__main__":

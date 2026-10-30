@@ -145,7 +145,9 @@ def interactive(
     db: Path,
     input_fn: Any = input,
     output_fn: Any = print,
+    forwarded: list[str] | None = None,
 ) -> int:
+    forwarded = list(forwarded) if forwarded is not None else ["--db", str(db)]
     while True:
         recent = recent_project_folders([], db, limit=9)
         try:
@@ -186,12 +188,14 @@ def interactive(
             if action == "project":
                 assert value is not None
                 if value == 2:
-                    result = onboard_all(Path.cwd().resolve(), [])
+                    if "--story" in forwarded or "--intent" in forwarded:
+                        raise ValueError("--story and --intent cannot be used with bulk onboarding.")
+                    result = onboard_all(Path.cwd().resolve(), forwarded)
                 else:
                     project_index = 0 if value == 1 else value - 2
                     if not 0 <= project_index < len(projects):
                         raise ValueError(f"Project option is unavailable: {value}")
-                    result = onboard_project(projects[project_index], [])
+                    result = onboard_project(projects[project_index], forwarded)
             elif action == "reports":
                 assert value is not None
                 result = show_reports(value)
@@ -267,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
             return onboard_project(args.workspace.resolve(), forwarded)
         if args.current:
             return onboard_project(current_git_root(), forwarded)
-        return interactive(args.db)
+        return interactive(args.db, forwarded=forwarded)
     except (OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1

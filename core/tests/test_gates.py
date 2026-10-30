@@ -156,6 +156,7 @@ class GateWorkflowTests(unittest.TestCase):
         scripts_dir = self.workspace / "scripts"
         scripts_dir.mkdir()
         (scripts_dir / "verify.py").write_text("print('Ran 3 tests')\n", encoding="utf-8")
+        self.git("add", "scripts/verify.py")
         result = run_verify(self.workspace)
         tree = self.git("write-tree").stdout.strip()
         self.assertEqual(tree, result["treeHash"])
@@ -353,6 +354,7 @@ class GateWorkflowTests(unittest.TestCase):
         (scripts_dir / "verify.py").write_text(
             "print('Ran 7 tests in 0.1s')\nprint('OK')\n", encoding="utf-8"
         )
+        self.git("add", "scripts/verify.py")
         result = run_verify(self.workspace)
         self.assertEqual(0, result["exitCode"])
         self.assertEqual(7, result["testCount"])
@@ -362,8 +364,27 @@ class GateWorkflowTests(unittest.TestCase):
         scripts_dir = self.workspace / "scripts"
         scripts_dir.mkdir()
         (scripts_dir / "verify.py").write_text("print('Ran 1 test')\n", encoding="utf-8")
+        self.git("add", "scripts/verify.py")
         self.write("README.md", "# Worktree only\n")
         with self.assertRaisesRegex(ValueError, "unstaged changes"):
+            run_verify(self.workspace)
+
+    def test_run_verify_rejects_worktree_mutation_during_check(self) -> None:
+        (self.workspace / "scripts").mkdir()
+        self.write(
+            "scripts/verify.py",
+            "from pathlib import Path\n"
+            "Path('README.md').write_text('changed during verification')\n"
+            "print('Ran 1 test')\n",
+        )
+        self.git("add", "scripts/verify.py")
+        with self.assertRaisesRegex(ValueError, "working tree changed"):
+            run_verify(self.workspace)
+
+    def test_run_verify_rejects_an_untracked_verifier(self) -> None:
+        (self.workspace / "scripts").mkdir()
+        self.write("scripts/verify.py", "raise SystemExit('must not run')\n")
+        with self.assertRaisesRegex(ValueError, "verify.py"):
             run_verify(self.workspace)
 
 

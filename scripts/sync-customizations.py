@@ -28,6 +28,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -50,6 +51,7 @@ WORKSPACE_BANNER = (
 )
 AGENTS_BEGIN = "<!-- BEGIN DENISTEK SDLC -->"
 AGENTS_END = "<!-- END DENISTEK SDLC -->"
+SKILL_MANIFEST = ".sdlc-managed.json"
 PYTHON_GLOBS = (
     "**/*.py",
     "**/*.pyi",
@@ -227,16 +229,40 @@ def _write_managed_instruction(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def _managed_skill_files(source: Path, destination: Path) -> set[str]:
+    manifest = destination / SKILL_MANIFEST
+    if manifest.is_file():
+        files = json.loads(manifest.read_text(encoding="utf-8"))
+        if not isinstance(files, list) or any(
+            not isinstance(name, str) or not name or name == "."
+            or "\\" in name or ":" in name
+            or Path(name).is_absolute() or ".." in Path(name).parts
+            for name in files
+        ):
+            raise ValueError(f"Invalid managed skill manifest: {manifest}")
+        return set(files)
+    existing = tree(destination, codex=True)
+    expected = tree(source, codex=True)
+    # Adopt an old installation only when every byte matches this payload.
+    if existing and existing != expected:
+        raise ValueError(f"Refusing to overwrite unmanaged skill: {destination}")
+    return set(existing)
+
+
 def _sync_skill_tree(source: Path, destination: Path) -> None:
     expected = tree(source, codex=True)
-    if destination.is_dir():
-        for path in destination.rglob("*"):
-            if path.is_file() and path.relative_to(destination).as_posix() not in expected:
-                path.unlink()
+    previous = _managed_skill_files(source, destination)
+    for name in previous - expected.keys():
+        path = destination / name
+        if path.is_file():
+            path.unlink()
     for relative, data in expected.items():
         path = destination / Path(relative)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
+    (destination / SKILL_MANIFEST).write_text(
+        json.dumps(sorted(expected), indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def install_workspace(workspace: Path) -> None:
@@ -282,6 +308,13 @@ def install_workspace(workspace: Path) -> None:
             "Refusing to overwrite unmanaged Claude rule: "
             + ", ".join(str(path) for path in claude_conflicts)
         )
+    skill_targets = [
+        (skill, destination / host / "skills" / skill.name)
+        for skill in sorted(p for p in SKILLS.iterdir() if (p / "SKILL.md").is_file())
+        for host in (".github", ".claude", ".agents")
+    ]
+    for source, target in skill_targets:
+        _managed_skill_files(source, target)
     for path, rule in instruction_files.items():
         source, description, apply_to, with_notes = rule
         content = _copilot_instruction(
@@ -300,16 +333,18 @@ def install_workspace(workspace: Path) -> None:
     )
     _write_managed_text(
         destination / "AGENTS.md",
-        f"{WORKSPACE_BANNER}\n\n{universal}\n\n{harness}",
+        f"{WORKSPACE_BANNER}\n\n{universal}\n\n{harness}\n\n"
+        "## SDLC source checkout for this workspace\n\n"
+        f"The shared SDLC source is `{REPO.as_posix()}`. Relative SDLC paths "
+        "in the shared notes and skills refer to that checkout. From this "
+        f"project run `python \"{(REPO / 'scripts/sdlc.py').as_posix()}\"` "
+        "with this project's `--workspace` when the command supports it; "
+        "do not assume this project contains `scripts/sdlc.py`. "
+        "Read research policy and host setup guides from the source checkout.",
     )
 
-    for skill in sorted(p for p in SKILLS.iterdir() if (p / "SKILL.md").is_file()):
-        for root in (
-            destination / ".github" / "skills",
-            destination / ".claude" / "skills",
-            destination / ".agents" / "skills",
-        ):
-            _sync_skill_tree(skill, root / skill.name)
+    for source, target in skill_targets:
+        _sync_skill_tree(source, target)
     print(f"installed workspace customizations: {destination}")
 
 

@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "core" / "src"))
 
 from copilot_customization.db import DEFAULT_DB  # noqa: E402
 from copilot_customization.service import (  # noqa: E402
+    onboarding_identity,
     recent_project_folders,
     select_project_folder,
 )
@@ -66,13 +67,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
     print(f"Project: {workspace}", flush=True)
-    intent = args.intent or (SDLC_INTENT if workspace == ROOT else None)
+    try:
+        repository, story = onboarding_identity(workspace)
+    except (ValueError, OSError) as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    intent = args.intent or (
+        SDLC_INTENT if workspace == ROOT
+        else "Adopt existing project into shared SDLC tracking."
+    )
     onboard = ["scripts/sdlc.py", "--db", str(args.db), "project-onboard",
-               "--workspace", str(workspace), "--tracking-hooks", "none"]
+               "--workspace", str(workspace), "--tracking-hooks", "none",
+               "--repository", repository]
     if intent:
         onboard.extend(["--intent", intent])
-    if args.story:
-        onboard.extend(["--story", args.story])
+    if args.story or not (workspace / ".sdlc/active-story.json").is_file():
+        onboard.extend(["--story", args.story or story])
     steps = [
         (
             "Refresh and install Copilot, Claude, Codex and DeepSeek customizations",

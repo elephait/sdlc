@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Refresh every host adapter, validate, and track untracked projects.
+"""Refresh and install host adapters, then onboard project tracking.
 
 Default behaviour, in order:
   1. regenerate the Copilot, Claude, Codex and DeepSeek payloads from shared sources
   2. scan the workspace root and its immediate children for projects and add
      tracking where none exists
 
-An existing ``.sdlc/active-story.json`` is never rewritten and never rebound:
-the project is reported as preserved and skipped. Run with ``--dry-run`` to see
-the plan without writing, or ``--skip-refresh`` to touch tracking only.
+Existing active stories are preserved; stale machine-local ledger paths may be
+repaired. Run with ``--dry-run`` to see the plan without writing, or
+``--skip-refresh`` to touch tracking only.
 
 Usage:
     python scripts/onboard-all.py
@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -28,7 +27,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "core" / "src"))
 
 from copilot_customization.db import DEFAULT_DB  # noqa: E402
-from copilot_customization.service import onboard_project  # noqa: E402
+from copilot_customization.service import onboard_project, onboarding_identity  # noqa: E402
 
 SKIP_NAMES = {
     ".git",
@@ -51,28 +50,6 @@ def run(label: str, command: list[str]) -> int:
 
 def is_project(path: Path) -> bool:
     return path.is_dir() and (path / ".git").exists()
-
-
-def repository_name(path: Path) -> str:
-    try:
-        completed = subprocess.run(
-            ["git", "-C", str(path), "remote", "get-url", "origin"],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-    except OSError:
-        completed = None
-    if completed is not None and completed.returncode == 0:
-        match = re.search(r"[/:]([^/:]+/[^/]+?)(?:\.git)?$", completed.stdout.strip())
-        if match:
-            return match.group(1)
-    return f"local/{path.name}"
-
-
-def story_id_for(path: Path) -> str:
-    stem = re.sub(r"[^A-Za-z0-9]+", "-", path.name).strip("-").upper() or "PROJECT"
-    return f"{stem}-001"
 
 
 def scan(root: Path) -> list[Path]:
@@ -112,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         default=0,
         help="After onboarding, show recent reports; defaults to 5.",
     )
-    parser.add_argument("--skip-refresh", action="store_true", help="Skip sync and verify.")
+    parser.add_argument("--skip-refresh", action="store_true", help="Skip adapter generation and installation.")
     parser.add_argument("--skip-tracking", action="store_true", help="Skip the project scan.")
     args = parser.parse_args(argv)
 
@@ -140,18 +117,29 @@ def main(argv: list[str] | None = None) -> int:
             except (OSError, json.JSONDecodeError):
                 bound = "unreadable"
 
-        story = bound or story_id_for(project)
-        repository = repository_name(project)
+        try:
+            repository, story = onboarding_identity(project)
+        except (ValueError, OSError) as error:
+            print(f"  failed     {project.name:<28} {error}", file=sys.stderr)
+            failures += 1
+            continue
         if args.dry_run:
             if bound:
                 print(f"  would preserve  {project.name:<28} story {story} ({repository})")
             else:
                 print(f"  would add  {project.name:<28} story {story} ({repository})")
             continue
+        if not args.skip_refresh:
+            code = run(
+                f"Install host customizations for {project.name}",
+                ["scripts/sync-customizations.py", "--workspace", str(project)],
+            )
+            if code:
+                failures += 1
+                continue
         try:
             result = onboard_project(
                 project,
-                project=project.name,
                 repository=repository,
                 story_id=story,
                 intent="Adopt existing project into shared SDLC tracking.",
