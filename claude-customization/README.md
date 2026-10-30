@@ -6,12 +6,13 @@ Claude adapter for the shared SDLC workflow. It contains only what is specific t
 |---|---|
 | `CLAUDE.md` | Always-on policy: `@`-imports the shared policy plus `host-notes.md`. No copy. |
 | `host-notes.md` | The only Claude-specific instruction text. |
+| `languages/*.md` | Source text for language-scoped Claude rules. Onboarding installs them as `.claude/rules/sdlc-python.md` and `sdlc-java.md`, each with a narrow `paths:` list. The plugin format has no rules component, so these are project-local only. |
 | `plugin/.claude-plugin/plugin.json`, `plugin/hooks/hooks.json` | Plugin manifest and hook wiring. |
 | `plugin/skills/`, `plugin/scripts/` | **Generated** by `python scripts/sync-customizations.py`. Do not edit. |
 
 ## Use
 
-1. Run the repository's `aicode.cmd` and select the project. It refreshes `.claude/CLAUDE.md` and `.claude/skills/` in that project from the latest shared sources.
+1. Run the repository's `aicode.cmd` and select the project. It refreshes `.claude/CLAUDE.md`, `.claude/rules/sdlc-*.md` and `.claude/skills/` in that project from the latest shared sources. It refuses to overwrite a reserved rule file that lacks the SDLC managed marker; move user-owned rules to a separately named file before retrying.
 2. Load the plugin from this checkout's `claude-customization/plugin` directory when plugin hooks are desired. Skills are also available project-locally after onboarding.
 3. Optionally install the CLI once from this checkout's `core` directory so agents can call it from any workspace.
 4. Start a new session in the selected project. Hooks record only where `.sdlc/active-story.json` exists.

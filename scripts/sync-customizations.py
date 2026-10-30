@@ -8,6 +8,8 @@ Shared sources (edit these):
     policy/research.md             on-demand research guidance
     copilot-customization/languages/*.md
                                    Copilot-only language instructions
+    claude-customization/languages/*.md
+                                   Claude-only language rules (workspace install only)
     core/scripts/*.py              hook scripts
 
 Generated (never edit; this script overwrites them):
@@ -48,6 +50,26 @@ WORKSPACE_BANNER = (
 )
 AGENTS_BEGIN = "<!-- BEGIN DENISTEK SDLC -->"
 AGENTS_END = "<!-- END DENISTEK SDLC -->"
+PYTHON_GLOBS = (
+    "**/*.py",
+    "**/*.pyi",
+    "**/*.ipynb",
+    "**/pyproject.toml",
+    "**/requirements*.txt",
+    "**/Pipfile",
+    "**/poetry.lock",
+    "**/uv.lock",
+)
+JAVA_GLOBS = (
+    "**/*.java",
+    "**/pom.xml",
+    "**/mvnw",
+    "**/mvnw.cmd",
+    "**/*.gradle",
+    "**/*.gradle.kts",
+    "**/gradlew",
+    "**/gradlew.bat",
+)
 COPILOT_RULES = {
     "universal.instructions.md": (
         POLICY / "universal.md",
@@ -66,34 +88,22 @@ COPILOT_RULES = {
         COPILOT / "languages" / "python.md",
         "Use when creating, changing, testing, or reviewing Python files and Python "
         "project configuration.",
-        (
-            "**/*.py",
-            "**/*.pyi",
-            "**/*.ipynb",
-            "**/pyproject.toml",
-            "**/requirements*.txt",
-            "**/Pipfile",
-            "**/poetry.lock",
-            "**/uv.lock",
-        ),
+        PYTHON_GLOBS,
         False,
     ),
     "java.instructions.md": (
         COPILOT / "languages" / "java.md",
         "Use when creating, changing, testing, or reviewing Java files and Java "
         "build configuration.",
-        (
-            "**/*.java",
-            "**/pom.xml",
-            "**/mvnw",
-            "**/mvnw.cmd",
-            "**/*.gradle",
-            "**/*.gradle.kts",
-            "**/gradlew",
-            "**/gradlew.bat",
-        ),
+        JAVA_GLOBS,
         False,
     ),
+}
+# Claude Code loads path-scoped rules from .claude/rules/*.md. The plugin format
+# has no rules component, so these are installed into workspaces only.
+WORKSPACE_CLAUDE_RULES = {
+    "sdlc-python.md": (CLAUDE / "languages" / "python.md", PYTHON_GLOBS),
+    "sdlc-java.md": (CLAUDE / "languages" / "java.md", JAVA_GLOBS),
 }
 WORKSPACE_COPILOT_RULES = {
     "sdlc.instructions.md": "universal.instructions.md",
@@ -136,6 +146,14 @@ def _copilot_instruction(
     if notes:
         text += f"\n{notes.strip()}\n"
     return text
+
+
+def _claude_rule(source: Path, paths: tuple[str, ...], banner: str) -> str:
+    patterns = "\n".join(f'  - "{pattern}"' for pattern in paths)
+    return (
+        f"---\npaths:\n{patterns}\n---\n\n{banner}\n\n"
+        f"{source.read_text(encoding='utf-8').strip()}\n"
+    )
 
 
 def expected_for_host(plugin: Path, copilot: bool) -> dict[Path, bytes]:
@@ -249,6 +267,21 @@ def install_workspace(workspace: Path) -> None:
             "Refusing to overwrite unmanaged Copilot instruction: "
             + ", ".join(str(path) for path in conflicts)
         )
+    claude_rules = {
+        destination / ".claude" / "rules" / name: _claude_rule(source, paths, WORKSPACE_BANNER)
+        for name, (source, paths) in WORKSPACE_CLAUDE_RULES.items()
+    }
+    claude_conflicts = [
+        path
+        for path in claude_rules
+        if path.is_file()
+        and WORKSPACE_BANNER not in path.read_text(encoding="utf-8-sig")
+    ]
+    if claude_conflicts:
+        raise ValueError(
+            "Refusing to overwrite unmanaged Claude rule: "
+            + ", ".join(str(path) for path in claude_conflicts)
+        )
     for path, rule in instruction_files.items():
         source, description, apply_to, with_notes = rule
         content = _copilot_instruction(
@@ -258,6 +291,8 @@ def install_workspace(workspace: Path) -> None:
             WORKSPACE_BANNER,
             copilot_notes if with_notes else None,
         )
+        _write_managed_instruction(path, content)
+    for path, content in claude_rules.items():
         _write_managed_instruction(path, content)
     _write_managed_text(
         destination / ".claude" / "CLAUDE.md",

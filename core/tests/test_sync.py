@@ -111,5 +111,47 @@ class GeneratedFilesTests(unittest.TestCase):
             )
 
 
+    def test_workspace_install_writes_path_scoped_claude_rules(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            completed = subprocess.run(
+                [sys.executable, str(SYNC), "--workspace", str(workspace)],
+                text=True,
+                capture_output=True,
+                check=False,
+                cwd=ROOT,
+            )
+
+            self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
+            python_rule = (workspace / ".claude/rules/sdlc-python.md").read_text(encoding="utf-8")
+            java_rule = (workspace / ".claude/rules/sdlc-java.md").read_text(encoding="utf-8")
+            self.assertTrue(python_rule.startswith('---\npaths:\n  - "**/*.py"\n'))
+            self.assertIn('  - "**/pyproject.toml"\n', python_rule)
+            self.assertTrue(java_rule.startswith('---\npaths:\n  - "**/*.java"\n'))
+            self.assertIn('  - "**/pom.xml"\n', java_rule)
+            self.assertIn("# Python working rules", python_rule)
+            self.assertIn("# Java working rules", java_rule)
+            self.assertNotIn("VS Code", python_rule)
+
+    def test_workspace_install_refuses_unmanaged_claude_rule(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            rule = workspace / ".claude/rules/sdlc-python.md"
+            rule.parent.mkdir(parents=True)
+            rule.write_text("# User-owned rule\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [sys.executable, str(SYNC), "--workspace", str(workspace)],
+                text=True,
+                capture_output=True,
+                check=False,
+                cwd=ROOT,
+            )
+
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn("Refusing to overwrite unmanaged Claude rule", completed.stderr)
+            self.assertEqual("# User-owned rule\n", rule.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

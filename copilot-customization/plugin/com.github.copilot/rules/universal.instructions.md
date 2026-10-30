@@ -14,7 +14,7 @@ Shared operating rules for Copilot, Claude, Codex and DeepSeek. Host notes descr
 - Human intent is authoritative. Before changing code, review the relevant human-authored requirements, decisions, commit history and existing implementation. Preserve their intent and working behavior by default; do not overwrite, revert, weaken or reinterpret them for agent convenience. When they conflict or a departure is necessary, make the conflict and proposed change explicit and obtain human direction before proceeding. Preserve unrelated edits and never silently change acceptance criteria.
 - Ordinary local work in the authorized workspace is expected. The current project is the default workspace boundary; `SDLC_WORKSPACE_ROOT` can set an explicit broader boundary. Neither is a permission grant. Respect host sandbox and approval decisions; request required access rather than bypassing a denial.
 - Do not send secrets, private source or internal logs to unapproved services, or incur external charges without authorization.
-- Publication is a human operation: leave pushes and releases to the user. Local commits require no authorization for the current task. Use `ai commit by <ai>: ` or `ai code review by <ai>: ` titles, naming the AI that made the commit (`ai commit by claude: ...`; claude, deepseek, codex or copilot) and preserve repository signing settings.
+- Publication is a human operation: leave pushes and releases to the user; never run `git push`. Read-only git commands and local commits need no approval. Use `ai commit by <ai>: ` or `ai code review by <ai>: ` titles, naming the AI that made the commit (`ai commit by claude: ...`; claude, deepseek, codex or copilot) and preserve repository signing settings.
 - Exclude credential-like files from commits unless explicitly approved for the exact staged content. Record approver, time, paths and blob hashes through the shared credential-approval command.
 
 ## Ownership under friction
@@ -30,7 +30,7 @@ Shared operating rules for Copilot, Claude, Codex and DeepSeek. Host notes descr
 Five handoffs structure a story. Each closes with recorded evidence and a named approver before the next opens; the commands are in the tracked-story skill.
 
 1. **Analysis and acceptance.** Intent, acceptance criteria, assumptions, out-of-scope and risks are written down and accepted.
-2. **Implementation.** The change is complete, validation has run, and a commit is authorized. It ends in a local commit and handoff report.
+2. **Implementation.** The change is complete, validation has run, and the change is committed locally. It ends in a local commit and handoff report.
 3. **Review.** Findings, dispositions and residual risk are recorded; at most three rounds.
 4. **Customization.** Any change to policy, skills, core, scripts, the root launchers or a host adapter names its layer and passes the drift check.
 5. **Documentation.** The end-user README matches current operation, architecture and limits.
@@ -41,9 +41,9 @@ Five handoffs structure a story. Each closes with recorded evidence and a named 
 
 - Inspect relevant instructions, recent edits, build configuration and nearby code before changing anything. Reuse existing implementations. Fix the narrowest proven cause; avoid unrelated refactoring.
 - Resolve routine choices from evidence. Ask only for a blocking ambiguity or a consequential decision outside existing authorization. Continue independent work while waiting.
-- Validate during implementation: run focused, safe tests and checks appropriate to the change, then inspect the final diff. Validation does not authorize a commit. Defer destructive, production or externally billable checks until authorized. Format changed code when needed and recheck affected behavior afterwards.
+- Validate during implementation: run focused, safe tests and checks appropriate to the change, then inspect the final diff. Defer destructive, production or externally billable checks until authorized. Format changed code when needed and recheck affected behavior afterwards.
 - Report only checks actually run and their results. Separate static inspection, synthetic checks and live host verification. Do not present agreement between agents, a pilot or an untested configuration as runtime proof.
-- Before an authorized commit, reconcile code, documentation and evidence; stage only reviewed files and use `commit-ready` for tracked stories. It creates a local commit and handoff report; it does not run tests or prove acceptance. If no commit was requested, leave reviewed changes uncommitted and report them.
+- Before committing, reconcile code, documentation and evidence; stage only reviewed files and use `commit-ready` for tracked stories. It creates a local commit and handoff report; it does not run tests or prove acceptance.
 
 ## Scale and focus
 

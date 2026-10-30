@@ -66,9 +66,9 @@ An implementation commit needs `analysis` and `implementation`; a review-fix com
 python scripts/sdlc.py gate --workspace C:\dev\common\sdlc --story $sdlcStory --gate review --artifact "<review-file>" --evidence "<checks and findings reviewed>" --approved-by "<actual approver>" --recorded-by codex
 ```
 
-See [the tracked-story workflow](../skills/tracked-story/SKILL.md) for all gates. A gate record does not itself establish user authorization to commit.
+See [the tracked-story workflow](../skills/tracked-story/SKILL.md) for all gates.
 
-After explicit local commit authorization, review and stage named files, then use the shared workflow (replace the summary, evidence and identity with actual values):
+Review and stage named files, then use the shared workflow (replace the summary, evidence and identity with actual values):
 
 ```powershell
 python scripts/sdlc.py commit-ready --workspace C:\dev\common\sdlc --message "ai code review by codex: unify host customization" --ai-name codex --prepared-by Codex --summary "Describe the reviewed change" --validation-summary "Describe checks actually run" --co-author "Codex <noreply@openai.com>"
