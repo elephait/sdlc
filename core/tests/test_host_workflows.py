@@ -74,26 +74,47 @@ class HostWorkflowTests(unittest.TestCase):
         self.assertIn("buildTool: maven", text)
         self.assertIn("command: mvn verify", text)
 
-    def test_onboarding_rehomes_stale_machine_paths_without_active_story(self) -> None:
+    def test_new_project_config_has_no_machine_specific_paths(self) -> None:
         self.onboard()
-        sdlc = self.workspace / ".sdlc"
-        (sdlc / "active-story.json").unlink()
-        project = sdlc / "project.yaml"
-        text = project.read_text(encoding="utf-8")
-        text = text.replace(
-            f"workspaceRoot: '{self.workspace}'",
-            r"workspaceRoot: 'Z:\missing\old-project'",
-        ).replace(
-            str(self.workspace / "ledger"),
-            r"Z:\missing\old-ledger",
+        text = (self.workspace / ".sdlc" / "project.yaml").read_text(encoding="utf-8")
+
+        self.assertNotIn("workspaceRoot", text)
+        self.assertNotIn("ledgerPath", text)
+        self.assertNotIn(str(self.workspace), text)
+
+    def test_onboarding_strips_machine_paths_from_existing_project_config(self) -> None:
+        self.onboard()
+        project = self.workspace / ".sdlc" / "project.yaml"
+        project.write_text(
+            project.read_text(encoding="utf-8").replace(
+                "project: ", r"workspaceRoot: 'Z:\old\checkout'" + "\nproject: ", 1
+            ) + r"  ledgerPath: 'Z:\old\ledger'" + "\n",
+            encoding="utf-8",
         )
-        project.write_text(text, encoding="utf-8")
 
-        restored = onboard_project(self.workspace, db_path=self.db)
-        updated = project.read_text(encoding="utf-8")
+        refreshed = self.onboard()
+        text = project.read_text(encoding="utf-8")
 
-        self.assertIn(f"workspaceRoot: '{self.workspace}'", updated)
-        self.assertIn(restored["ledgerPath"], updated)
+        self.assertEqual("updated", refreshed["status"]["projectConfig"])
+        self.assertNotIn("workspaceRoot", text)
+        self.assertNotIn("ledgerPath", text)
+        self.assertIn("storyId: 'TEST-001'", text)
+        self.assertEqual("preserved", self.onboard()["status"]["projectConfig"])
+
+    def test_onboarding_rehomes_stale_active_story_ledger(self) -> None:
+        first = self.onboard()
+        active = self.workspace / ".sdlc" / "active-story.json"
+        data = json.loads(active.read_text(encoding="utf-8"))
+        data["ledgerPath"] = str(self.workspace.parent / "old-machine" / "ledger")
+        active.write_text(json.dumps(data), encoding="utf-8")
+
+        restored = self.onboard()
+
+        self.assertEqual(first["ledgerPath"], restored["ledgerPath"])
+        self.assertEqual(
+            first["ledgerPath"],
+            json.loads(active.read_text(encoding="utf-8"))["ledgerPath"],
+        )
 
     def test_cli_and_hook_run_with_isolated_tracking_from_another_cwd(self) -> None:
         result = self.onboard()

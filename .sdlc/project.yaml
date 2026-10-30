@@ -1,7 +1,6 @@
 schemaVersion: 1
 project: sdlc
 repository: elephait/sdlc
-workspaceRoot: 'C:\dev\common\elephait\sdlc'
 
 technology:
   language: python
@@ -21,9 +20,8 @@ validation:
 
 git:
   pushByAgentAllowed: false
-  localCommitRequiresApproval: true
+  localCommitRequiresApproval: false
   destructiveOperationsAllowed: false
 
 tracking:
   storyId: SDLC-001
-  ledgerPath: 'C:\dev\common\elephait\sdlc\.sdlc\ledger\sdlc\SDLC-001'

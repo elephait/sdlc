@@ -137,20 +137,6 @@ def onboard_project(
             "Story ID is required when the workspace has no active story."
         )
 
-    project_relocated = False
-    previous_workspace: Path | None = None
-    configured_workspace = project_values.get("workspaceRoot")
-    if configured_workspace:
-        previous_workspace = Path(configured_workspace)
-        if previous_workspace.resolve() != resolved_workspace:
-            if previous_workspace.exists():
-                raise ValueError(
-                    "Existing project.yaml workspaceRoot conflicts with "
-                    f"onboarding: {configured_workspace!r} != "
-                    f"{str(resolved_workspace)!r}"
-                )
-            project_relocated = True
-
     if project_values:
         for key, expected in (
             ("project", resolved_project),
@@ -176,24 +162,19 @@ def onboard_project(
             else resolved_workspace / configured_ledger
         ).resolve()
         active_ledger_changed = False
-        if project_relocated and configured_ledger.is_absolute():
-            if previous_workspace is None:
-                raise ValueError("Previous workspace is required for relocation.")
-            try:
-                workspace_relative_ledger = configured_ledger.relative_to(
-                    previous_workspace
+        # An absolute ledger path from another machine's layout is rehomed to
+        # this machine's default location; an existing path is never moved.
+        if configured_ledger.is_absolute() and not configured_ledger.exists():
+            default_ledger = (
+                require_under_dev(
+                    ledger_root or resolved_workspace / ".sdlc" / "ledger",
+                    "Ledger root",
                 )
-            except ValueError:
-                pass
-            else:
-                resolved_ledger = (
-                    resolved_workspace / workspace_relative_ledger
-                ).resolve()
-                active_ledger_changed = True
-            if not configured_ledger.exists() and not active_ledger_changed:
-                resolved_ledger = (
-                    resolved_workspace / ".sdlc" / "ledger" / resolved_story
-                ).resolve()
+                / resolved_project
+                / resolved_story
+            ).resolve()
+            if default_ledger != resolved_ledger:
+                resolved_ledger = default_ledger
                 active_ledger_changed = True
     else:
         active_ledger_changed = False
@@ -247,18 +228,8 @@ def onboard_project(
             story_status = "created"
 
     sdlc_root.mkdir(parents=True, exist_ok=True)
-    replacements = {}
-    if project_relocated:
-        replacements["workspaceRoot"] = str(resolved_workspace)
-    configured_project_ledger = project_values.get("ledgerPath")
-    if (
-        configured_project_ledger
-        and Path(configured_project_ledger).resolve() != resolved_ledger
-    ):
-        replacements["ledgerPath"] = str(resolved_ledger)
     project_status = "preserved"
-    if replacements:
-        _replace_project_values(project_path, replacements)
+    if project_path.is_file() and _strip_machine_values(project_path):
         project_status = "updated"
     if not project_path.exists():
         _atomic_write(
@@ -268,11 +239,9 @@ def onboard_project(
                     "schemaVersion: 1",
                     f"project: {_yaml_scalar(resolved_project)}",
                     f"repository: {_yaml_scalar(resolved_repository)}",
-                    f"workspaceRoot: {_yaml_scalar(str(resolved_workspace))}",
                     "",
                     "tracking:",
                     f"  storyId: {_yaml_scalar(resolved_story)}",
-                    f"  ledgerPath: {_yaml_scalar(str(resolved_ledger))}",
                     "",
                 ]
             ),
@@ -534,27 +503,25 @@ def _project_activity(path: Path) -> float:
 def _read_project_values(path: Path) -> dict[str, str]:
     text = path.read_text(encoding="utf-8-sig")
     values: dict[str, str] = {}
-    for key in ("project", "repository", "workspaceRoot", "storyId", "ledgerPath"):
+    for key in ("project", "repository", "storyId"):
         match = re.search(rf"(?m)^\s*{key}:\s*(.+?)\s*$", text)
         if match:
             values[key] = match.group(1).strip().strip("'\"")
     return values
 
 
-def _replace_project_values(path: Path, replacements: dict[str, str]) -> None:
+def _strip_machine_values(path: Path) -> bool:
+    """Remove machine-specific absolute paths from the tracked project file.
+
+    ``workspaceRoot`` and ``tracking.ledgerPath`` belong to one checkout; the
+    local ledger path lives in the untracked ``active-story.json``.
+    """
     text = path.read_text(encoding="utf-8-sig")
-    updated = text
-    for key, value in replacements.items():
-        updated, count = re.subn(
-            rf"(?m)^(\s*){re.escape(key)}:\s*.+?$",
-            lambda match: (
-                f"{match.group(1)}{key}: {_yaml_scalar(value)}"
-            ),
-            updated,
-        )
-        if count != 1:
-            raise ValueError(f"Expected exactly one {key} entry in {path}.")
+    updated = re.sub(r"(?m)^[ \t]*(?:workspaceRoot|ledgerPath):.*(?:\r?\n|\Z)", "", text)
+    if updated == text:
+        return False
     _atomic_write(path, updated)
+    return True
 
 
 def _detected_project_sections(workspace: Path) -> dict[str, list[str]]:

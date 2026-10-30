@@ -139,10 +139,10 @@ class OnboardAllTests(unittest.TestCase):
     def test_ledger_path_uses_the_workspace_scoped_root(self) -> None:
         self.project("fresh")
         self.run_all()
-        project_yaml = (self.root / "fresh" / ".sdlc" / "project.yaml").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn(str(self.root / ".sdlc-ledger"), project_yaml)
+        sdlc = self.root / "fresh" / ".sdlc"
+        self.assertNotIn("ledgerPath", (sdlc / "project.yaml").read_text(encoding="utf-8"))
+        active = json.loads((sdlc / "active-story.json").read_text(encoding="utf-8"))
+        self.assertIn(str(self.root / ".sdlc-ledger"), active["ledgerPath"])
 
 
 if __name__ == "__main__":

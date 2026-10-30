@@ -31,7 +31,7 @@ Normal delivery commits use `ai commit by <ai>: ` (for example `ai commit by cla
 | `sql/schema.sql` | SQLite coordination schema |
 | `tests/` | Unit tests, including a check that host plugins match these sources |
 
-Markdown and JSON under the story ledger are the reviewable source of intent; SQLite is the local coordination index. A workspace's `.sdlc/project.yaml` holds its identity and validation commands, and `.sdlc/active-story.json` binds it to a story and ledger.
+Markdown and JSON under the story ledger are the reviewable source of intent; SQLite is the local coordination index. A workspace's `.sdlc/project.yaml` is tracked and portable (identity, validation commands, no absolute paths), and the untracked `.sdlc/active-story.json` binds this machine's checkout to a story and ledger.
 
 ## Hooks
 
