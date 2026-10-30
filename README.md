@@ -1,6 +1,6 @@
 # Governed Multi-Agent Software Delivery
 
-This utility provides a shared operating framework for reliable AI-assisted software delivery. It allows engineering teams to apply multiple or one particular AI coding tools across different programming languages and stages of the development lifecycle without tying the workflow to one model, vendor or technology stack.
+This utility provides a shared operating framework for reliable AI-assisted software delivery. It allows engineering teams to apply multiple or one particular AI coding tools across different programming languages and stages of the development lifecycle.
 
 ## Strategic Goals
 
@@ -10,7 +10,7 @@ This utility provides a shared operating framework for reliable AI-assisted soft
 4. **Make engineering best practices the default through `aicode`.** Equip each supported coding tool with shared coding, software design and AI-native delivery practices: understand requirements and existing code, keep designs simple and maintainable, make bounded changes, validate behavior, and preserve decisions and evidence across agent handoffs. Adapt these practices to the project's language, architecture and toolchain.
 5. **Enable project-specific self-improvement from measured results.** Use collected project metrics—validation failures, confirmed review defects, retries, elapsed time and human intervention, plus usage or cost when available—to identify recurring problems and improve instructions, skills, checks and workflows. Compare changes against a project baseline, retain improvements that measurably help, and revise or roll back regressions. Keep changes reviewable and governed by human intent; missing telemetry is a measurement gap, never evidence of improvement.
 
-`aicode` currently installs and refreshes customizations, onboards tracking, and exposes reports and project verification. Metric-driven self-improvement is a strategic goal supported by the shared evidence records and commit analysis; it is not yet an autonomous tuning loop. Codex requires explicit evidence recording and provides no automatic tool or token telemetry through this integration.
+`aicode` currently installs and refreshes customizations, onboards tracking, and exposes reports and project verification. Metric-driven self-improvement is a strategic goal supported by the shared evidence records and commit analysis; it is not yet an autonomous tuning loop. 
 
 ## Operating Model
 
