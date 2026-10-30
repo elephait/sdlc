@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -52,6 +53,7 @@ WORKSPACE_BANNER = (
 AGENTS_BEGIN = "<!-- BEGIN DENISTEK SDLC -->"
 AGENTS_END = "<!-- END DENISTEK SDLC -->"
 SKILL_MANIFEST = ".sdlc-managed.json"
+SOURCE_LOCATOR = ".sdlc/sdlc-source.txt"
 PYTHON_GLOBS = (
     "**/*.py",
     "**/*.pyi",
@@ -229,6 +231,41 @@ def _write_managed_instruction(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+def _historical_skill_trees(source: Path):
+    """Yield earlier shared payloads of one skill, newest first.
+
+    Read from the SDLC checkout's git history so an installation made by an
+    older version can be recognised as SDLC-managed. Yields nothing when
+    history is unavailable, which leaves such an installation unadopted.
+    """
+    relative_root = source.relative_to(REPO).as_posix()
+
+    def git(*args: str) -> subprocess.CompletedProcess[bytes] | None:
+        try:
+            completed = subprocess.run(
+                ["git", "-C", str(REPO), *args], capture_output=True, check=False
+            )
+        except OSError:
+            return None
+        return completed if completed.returncode == 0 else None
+
+    log = git("log", "-n", "100", "--format=%H", "--", relative_root)
+    if log is None:
+        return
+    for commit in log.stdout.decode().split():
+        listing = git("ls-tree", "-r", "-z", "--name-only", commit, "--", relative_root)
+        if listing is None:
+            continue
+        files: dict[str, bytes] = {}
+        for name in filter(None, listing.stdout.decode("utf-8").split("\0")):
+            parts = Path(name).relative_to(relative_root).parts
+            blob = git("show", f"{commit}:{name}")
+            if blob is None or "__pycache__" in parts:
+                continue
+            files["/".join(parts)] = norm(blob.stdout)
+        yield files
+
+
 def _managed_skill_files(source: Path, destination: Path) -> set[str]:
     manifest = destination / SKILL_MANIFEST
     if manifest.is_file():
@@ -243,10 +280,43 @@ def _managed_skill_files(source: Path, destination: Path) -> set[str]:
         return set(files)
     existing = tree(destination, codex=True)
     expected = tree(source, codex=True)
-    # Adopt an old installation only when every byte matches this payload.
-    if existing and existing != expected:
-        raise ValueError(f"Refusing to overwrite unmanaged skill: {destination}")
+    # Adopt an old installation only when every byte matches this payload or an
+    # earlier shared payload of the same skill.
+    if (
+        existing
+        and existing != expected
+        and not any(existing == old for old in _historical_skill_trees(source))
+    ):
+        raise ValueError(
+            f"Refusing to overwrite unmanaged skill: {destination} "
+            "(it matches no shared SDLC payload; move or rename it to let SDLC "
+            "install its own)"
+        )
     return set(existing)
+
+
+def _write_source_locator(workspace: Path) -> None:
+    """Record this machine's SDLC checkout locally, never in a tracked file."""
+    locator = workspace / SOURCE_LOCATOR
+    locator.parent.mkdir(parents=True, exist_ok=True)
+    locator.write_text(REPO.as_posix() + "\n", encoding="utf-8")
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(workspace), "rev-parse", "--git-path", "info/exclude"],
+            text=True, capture_output=True, check=False,
+        )
+    except OSError:
+        return
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return
+    exclude = Path(completed.stdout.strip())
+    if not exclude.is_absolute():
+        exclude = workspace / exclude
+    current = exclude.read_text(encoding="utf-8") if exclude.is_file() else ""
+    if SOURCE_LOCATOR not in current.splitlines():
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        separator = "" if not current or current.endswith("\n") else "\n"
+        exclude.write_text(current + separator + SOURCE_LOCATOR + "\n", encoding="utf-8")
 
 
 def _sync_skill_tree(source: Path, destination: Path) -> None:
@@ -331,16 +401,20 @@ def install_workspace(workspace: Path) -> None:
         destination / ".claude" / "CLAUDE.md",
         f"{WORKSPACE_BANNER}\n\n{universal}\n\n{claude_notes}",
     )
+    _write_source_locator(destination)
     _write_managed_text(
         destination / "AGENTS.md",
         f"{WORKSPACE_BANNER}\n\n{universal}\n\n{harness}\n\n"
         "## SDLC source checkout for this workspace\n\n"
-        f"The shared SDLC source is `{REPO.as_posix()}`. Relative SDLC paths "
-        "in the shared notes and skills refer to that checkout. From this "
-        f"project run `python \"{(REPO / 'scripts/sdlc.py').as_posix()}\"` "
-        "with this project's `--workspace` when the command supports it; "
-        "do not assume this project contains `scripts/sdlc.py`. "
-        "Read research policy and host setup guides from the source checkout.",
+        "The shared SDLC source checkout is not part of this project and its "
+        "location differs between machines. Find it from the `SDLC_HOME` "
+        f"environment variable, otherwise from the path in `{SOURCE_LOCATOR}` "
+        "(local to this machine and untracked; `aicode.cmd` rewrites it). "
+        "Relative SDLC paths in the shared notes and skills refer to that "
+        "checkout. Run its `scripts/sdlc.py` with this project's `--workspace` "
+        "when the command supports it, and read research policy and host "
+        "setup guides from it. If neither locator resolves, ask the user to "
+        "run `aicode.cmd` instead of guessing a path.",
     )
 
     for source, target in skill_targets:

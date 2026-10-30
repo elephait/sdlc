@@ -37,9 +37,10 @@ class GeneratedFilesTests(unittest.TestCase):
             self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
             self.assertIn("# Project instructions", agents.read_text(encoding="utf-8"))
             self.assertIn("BEGIN DENISTEK SDLC", agents.read_text(encoding="utf-8"))
-            self.assertIn(
-                (ROOT / "scripts/sdlc.py").as_posix(),
-                agents.read_text(encoding="utf-8"),
+            self.assertNotIn(ROOT.as_posix(), agents.read_text(encoding="utf-8"))
+            self.assertEqual(
+                ROOT.as_posix() + "\n",
+                (workspace / ".sdlc/sdlc-source.txt").read_text(encoding="utf-8"),
             )
             self.assertTrue(
                 (workspace / ".github/instructions/sdlc.instructions.md").is_file()
@@ -203,6 +204,65 @@ class GeneratedFilesTests(unittest.TestCase):
             )
             self.assertEqual(0, completed.returncode, completed.stderr)
             self.assertTrue((destination / ".sdlc-managed.json").is_file())
+
+
+    def _load_sync(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("sync_customizations", SYNC)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_legacy_skill_install_from_an_earlier_payload_is_adopted(self) -> None:
+        module = self._load_sync()
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            legacy = workspace / ".agents/skills/tracked-story/SKILL.md"
+            legacy.parent.mkdir(parents=True)
+            legacy.write_bytes(b"older shared payload\n")
+            module._historical_skill_trees = lambda source: iter(
+                [{"SKILL.md": b"older shared payload\n"}]
+            )
+
+            module.install_workspace(workspace)
+
+            self.assertIn("name: tracked-story", legacy.read_text(encoding="utf-8"))
+            self.assertTrue((legacy.parent / ".sdlc-managed.json").is_file())
+
+    def test_unmatched_same_name_skill_is_refused_and_preserved(self) -> None:
+        module = self._load_sync()
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            own = workspace / ".claude/skills/tracked-story/SKILL.md"
+            own.parent.mkdir(parents=True)
+            own.write_text("# my own skill\n", encoding="utf-8")
+            module._historical_skill_trees = lambda source: iter([])
+
+            with self.assertRaisesRegex(ValueError, "Refusing to overwrite unmanaged skill"):
+                module.install_workspace(workspace)
+
+            self.assertEqual("# my own skill\n", own.read_text(encoding="utf-8"))
+
+    def test_installed_agents_file_carries_no_machine_path(self) -> None:
+        module = self._load_sync()
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            subprocess.run(["git", "init", "-q", str(workspace)], check=True)
+
+            module.install_workspace(workspace)
+            module.install_workspace(workspace)
+
+            agents = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+            self.assertNotIn(module.REPO.as_posix(), agents)
+            self.assertIn("SDLC_HOME", agents)
+            self.assertIn(module.SOURCE_LOCATOR, agents)
+            self.assertEqual(
+                module.REPO.as_posix() + "\n",
+                (workspace / module.SOURCE_LOCATOR).read_text(encoding="utf-8"),
+            )
+            exclude = (workspace / ".git/info/exclude").read_text(encoding="utf-8")
+            self.assertEqual(1, exclude.splitlines().count(module.SOURCE_LOCATOR))
 
 
 if __name__ == "__main__":
