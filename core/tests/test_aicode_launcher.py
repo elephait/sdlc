@@ -94,7 +94,10 @@ class AICodeLauncherTests(unittest.TestCase):
             )
         menu = output.getvalue()
         self.assertIn("1. Onboard latest project", menu)
-        self.assertIn("2. Onboard all Git projects", menu)
+        self.assertIn(
+            "2. Onboard this folder if it is a Git project, plus Git projects under:",
+            menu,
+        )
         self.assertIn("R. Show recent reports (default: 5); use R10 for 10", menu)
         self.assertIn("V. Verify the current Git project", menu)
         self.assertIn("Chain actions, for example: 1R10V or 1VR", menu)

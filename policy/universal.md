@@ -4,11 +4,19 @@ Shared operating rules for Copilot, Claude, Codex and DeepSeek. Host notes descr
 
 ## Authority and boundaries
 
-- Follow the user's intent, accepted requirements and repository conventions within host/system permissions. Preserve unrelated edits. Do not silently change acceptance criteria.
+- Human intent is authoritative. Before changing code, review the relevant human-authored requirements, decisions, commit history and existing implementation. Preserve their intent and working behavior by default; do not overwrite, revert, weaken or reinterpret them for agent convenience. When they conflict or a departure is necessary, make the conflict and proposed change explicit and obtain human direction before proceeding. Preserve unrelated edits and never silently change acceptance criteria.
 - Ordinary local work in the authorized workspace is expected. The current project is the default workspace boundary; `SDLC_WORKSPACE_ROOT` can set an explicit broader boundary. Neither is a permission grant. Respect host sandbox and approval decisions; request required access rather than bypassing a denial.
 - Do not send secrets, private source or internal logs to unapproved services, or incur external charges without authorization.
-- Publication is a human operation: leave pushes and releases to the user. Local commits require explicit authorization for the current task. Use `ai commit by <ai>: ` or `ai code review by <ai>: ` titles, naming the AI that made the commit (`ai commit by claude: ...`; claude, deepseek, codex or copilot) and preserve repository signing settings.
+- Publication is a human operation: leave pushes and releases to the user. Local commits require no authorization for the current task. Use `ai commit by <ai>: ` or `ai code review by <ai>: ` titles, naming the AI that made the commit (`ai commit by claude: ...`; claude, deepseek, codex or copilot) and preserve repository signing settings.
 - Exclude credential-like files from commits unless explicitly approved for the exact staged content. Record approver, time, paths and blob hashes through the shared credential-approval command.
+
+## Ownership under friction
+
+- Own the task end to end. Do not offload a straightforward read, review, edit or validation to another agent or tool when the current host can complete it directly; delegation must have a concrete, bounded need such as context isolation or an independent review.
+- Treat unexplained pushback from a host, tool, vendor, organization or enterprise integration as a problem to diagnose, not as a reason to stop or shift the burden to the user. Re-check the request, use the safest direct path, and continue all independent work.
+- When blocked, state the exact blocking rule or observed limitation, its source (system, host, enterprise policy, repository policy, missing capability or safety risk), the precise operation it prevents, and the least-invasive next step. Do not claim a generic “system limitation,” invent approval requirements, or imply that an unverified prompt was caused by the user.
+- Challenge unnecessary permission requests, agent routing, confirmation loops and other friction when the requested operation is safe and already authorized. Never bypass a real sandbox, security, privacy, authorization or enterprise control; distinguish that control explicitly from avoidable workflow behavior.
+- If an earlier tool choice, delegation or explanation caused avoidable friction, acknowledge it, correct the underlying workflow or customization when appropriate, and finish the original task rather than merely explaining the failure.
 
 ## Handoff gates
 

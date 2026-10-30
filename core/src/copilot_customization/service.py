@@ -278,6 +278,9 @@ def onboard_project(
             ),
         )
         project_status = "created"
+    if _ensure_detected_project_sections(project_path, resolved_workspace):
+        if project_status == "preserved":
+            project_status = "updated"
 
     active_status = "preserved"
     if active and active_ledger_changed:
@@ -552,6 +555,56 @@ def _replace_project_values(path: Path, replacements: dict[str, str]) -> None:
         if count != 1:
             raise ValueError(f"Expected exactly one {key} entry in {path}.")
     _atomic_write(path, updated)
+
+
+def _detected_project_sections(workspace: Path) -> dict[str, list[str]]:
+    pom = workspace / "pom.xml"
+    if not pom.is_file():
+        return {}
+
+    pom_text = pom.read_text(encoding="utf-8-sig")
+    technology = [
+        "technology:",
+        "  language: java",
+        "  buildTool: maven",
+    ]
+    java_version = re.search(
+        r"<java\.version>\s*([^<]+?)\s*</java\.version>",
+        pom_text,
+    )
+    if java_version:
+        technology.insert(2, f"  javaVersion: {_yaml_scalar(java_version.group(1))}")
+
+    executable = "mvnw.cmd" if (workspace / "mvnw.cmd").is_file() else "mvn"
+    return {
+        "technology": technology,
+        "validation": [
+            "validation:",
+            "  verify:",
+            f"    command: {executable} verify",
+        ],
+    }
+
+
+def _ensure_detected_project_sections(path: Path, workspace: Path) -> bool:
+    detected = _detected_project_sections(workspace)
+    if not detected:
+        return False
+
+    text = path.read_text(encoding="utf-8-sig")
+    additions = [
+        lines
+        for section, lines in detected.items()
+        if not re.search(rf"(?m)^{re.escape(section)}:\s*$", text)
+    ]
+    if not additions:
+        return False
+
+    updated = text.rstrip() + "\n"
+    for lines in additions:
+        updated += "\n" + "\n".join(lines) + "\n"
+    _atomic_write(path, updated)
+    return True
 
 
 def _yaml_scalar(value: str) -> str:

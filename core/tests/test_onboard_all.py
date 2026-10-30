@@ -41,7 +41,12 @@ class OnboardAllTests(unittest.TestCase):
             sdlc = path / ".sdlc"
             sdlc.mkdir()
             (sdlc / "active-story.json").write_text(
-                json.dumps({"storyId": "TRACKED-001", "project": name}),
+                json.dumps({
+                    "storyId": "TRACKED-001",
+                    "project": name,
+                    "repository": f"local/{name}",
+                    "ledgerPath": str(self.root / ".sdlc-ledger" / name / "TRACKED-001"),
+                }),
                 encoding="utf-8",
             )
         return path
@@ -78,7 +83,24 @@ class OnboardAllTests(unittest.TestCase):
                 row[0]
                 for row in connection.execute("SELECT story_id FROM stories").fetchall()
             }
-        self.assertEqual({"FRESH-001"}, stories)
+        self.assertEqual({"FRESH-001", "TRACKED-001"}, stories)
+
+    def test_git_root_and_child_project_are_both_tracked(self) -> None:
+        (self.root / ".git").mkdir()
+        (self.root / "pom.xml").write_text("<project />", encoding="utf-8")
+        child = self.project("child")
+
+        code, output = self.run_all()
+
+        self.assertEqual(0, code, output)
+        self.assertIn(f"added      {self.root.name}", output)
+        self.assertIn("added      child", output)
+        self.assertTrue((self.root / ".sdlc" / "project.yaml").is_file())
+        self.assertTrue((child / ".sdlc" / "project.yaml").is_file())
+        self.assertIn(
+            "command: mvn verify",
+            (self.root / ".sdlc" / "project.yaml").read_text(encoding="utf-8"),
+        )
 
     def test_second_run_changes_nothing(self) -> None:
         fresh = self.project("fresh")

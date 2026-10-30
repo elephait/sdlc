@@ -5,12 +5,14 @@ VS Code Copilot adapter for the shared SDLC workflow. It contains only what is s
 | Path | What it is |
 |---|---|
 | `host-notes.md` | The only Copilot-specific instruction text; appended to the generated universal rule. |
+| `languages/*.md` | Source text for language-scoped Copilot rules. Each generated rule uses a narrow `applyTo` pattern. |
 | `plugin/plugin.json`, `plugin/com.github.copilot/hooks/hooks.json` | Agent Plugins 1.0 manifest and tracking-only hook wiring. |
 | `plugin/skills/`, `plugin/scripts/`, `plugin/com.github.copilot/rules/` | **Generated** by `python scripts/sync-customizations.py`. Do not edit. |
 
 ## Use
 
 - Run the root `aicode.cmd` for a project to install its current workspace instructions and skills, then start a new session. The plugin remains available for hosts that use plugin-level activation.
+- Onboarding refreshes SDLC-managed Copilot instruction files and installs separate universal, Python and Java rules. It refuses to overwrite a reserved instruction path that does not contain the SDLC managed marker; move user-owned rules to a separately named file before retrying.
 - Workspace tracking hooks live at `.github/hooks/copilot-sdlc.json` in the tracked workspace; `copilot-sdlc project-onboard --tracking-hooks copilot-workspace` writes them.
 - Operation, CLI and architecture: [core/README.md](../core/README.md).
 

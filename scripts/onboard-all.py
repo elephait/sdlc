@@ -3,7 +3,8 @@
 
 Default behaviour, in order:
   1. regenerate the Copilot, Claude, Codex and DeepSeek payloads from shared sources
-  2. scan the workspace root for projects and add tracking where none exists
+  2. scan the workspace root and its immediate children for projects and add
+     tracking where none exists
 
 An existing ``.sdlc/active-story.json`` is never rewritten and never rebound:
 the project is reported as preserved and skipped. Run with ``--dry-run`` to see
@@ -75,13 +76,15 @@ def story_id_for(path: Path) -> str:
 
 
 def scan(root: Path) -> list[Path]:
-    return sorted(
+    projects = [root] if is_project(root) else []
+    projects.extend(sorted(
         path
         for path in root.iterdir()
         if path.name not in SKIP_NAMES
         and not path.name.startswith(".")
         and is_project(path)
-    )
+    ))
+    return projects
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -90,7 +93,8 @@ def main(argv: list[str] | None = None) -> int:
         "--root",
         type=Path,
         default=REPO.parent,
-        help="Folder whose immediate children are projects (default: the folder above this repository).",
+        help="Project or folder whose immediate children are projects "
+             "(default: the folder above this repository).",
     )
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument(
@@ -129,18 +133,20 @@ def main(argv: list[str] | None = None) -> int:
     failures = 0
     for project in scan(root):
         active = project / ".sdlc" / "active-story.json"
+        bound = None
         if active.is_file():
             try:
                 bound = json.loads(active.read_text(encoding="utf-8-sig")).get("storyId")
             except (OSError, json.JSONDecodeError):
                 bound = "unreadable"
-            print(f"  preserved  {project.name:<28} story {bound} (existing tracking)")
-            continue
 
-        story = story_id_for(project)
+        story = bound or story_id_for(project)
         repository = repository_name(project)
         if args.dry_run:
-            print(f"  would add  {project.name:<28} story {story} ({repository})")
+            if bound:
+                print(f"  would preserve  {project.name:<28} story {story} ({repository})")
+            else:
+                print(f"  would add  {project.name:<28} story {story} ({repository})")
             continue
         try:
             result = onboard_project(
@@ -157,7 +163,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  failed     {project.name:<28} {error}", file=sys.stderr)
             failures += 1
             continue
-        print(f"  added      {project.name:<28} story {result['storyId']} ({repository})")
+        if bound:
+            config_status = result["status"]["projectConfig"]
+            detail = (
+                "configuration updated"
+                if config_status == "updated"
+                else "existing tracking"
+            )
+            print(f"  preserved  {project.name:<28} story {result['storyId']} ({detail})")
+        else:
+            print(f"  added      {project.name:<28} story {result['storyId']} ({repository})")
 
     print("\nHost readiness")
     for label, path in (

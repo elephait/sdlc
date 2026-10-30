@@ -56,6 +56,24 @@ class HostWorkflowTests(unittest.TestCase):
         self.assertEqual("created", restored["status"]["activeStory"])
         self.assertTrue(active.is_file())
 
+    def test_onboarding_detects_maven_validation_for_new_and_existing_config(self) -> None:
+        first = self.onboard()
+        project = self.workspace / ".sdlc" / "project.yaml"
+        self.assertNotIn("validation:", project.read_text(encoding="utf-8"))
+        (self.workspace / "pom.xml").write_text(
+            "<project><properties><java.version>21</java.version></properties></project>",
+            encoding="utf-8",
+        )
+
+        refreshed = self.onboard()
+        text = project.read_text(encoding="utf-8")
+
+        self.assertEqual("updated", refreshed["status"]["projectConfig"])
+        self.assertIn("language: java", text)
+        self.assertIn("javaVersion: '21'", text)
+        self.assertIn("buildTool: maven", text)
+        self.assertIn("command: mvn verify", text)
+
     def test_onboarding_rehomes_stale_machine_paths_without_active_story(self) -> None:
         self.onboard()
         sdlc = self.workspace / ".sdlc"

@@ -15,15 +15,20 @@ DEV_ROOT = Path(WORKSPACE_ROOT).expanduser().resolve() if WORKSPACE_ROOT else No
 
 def require_under_dev(path: Path, label: str) -> Path:
     resolved = path.expanduser().resolve()
-    if DEV_ROOT is not None:
+    if DEV_ROOT is None:
+        return resolved
+    allowed_roots = (PROJECT_ROOT.resolve(), DEV_ROOT)
+    for root in allowed_roots:
         try:
-            resolved.relative_to(DEV_ROOT)
-        except ValueError as error:
-            raise ValueError(
-                f"{label} must be under SDLC_WORKSPACE_ROOT "
-                f"({DEV_ROOT}): {resolved}"
-            ) from error
-    return resolved
+            resolved.relative_to(root)
+            return resolved
+        except ValueError:
+            continue
+    roots = ", ".join(str(root) for root in allowed_roots)
+    raise ValueError(
+        f"{label} must be under the SDLC project root or "
+        f"SDLC_WORKSPACE_ROOT ({roots}): {resolved}"
+    )
 
 
 def connect(path: Path = DEFAULT_DB) -> sqlite3.Connection:

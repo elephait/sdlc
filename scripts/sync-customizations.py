@@ -6,6 +6,8 @@ Shared sources (edit these):
     policy/universal.md            host-neutral operating rules
     policy/harness-notes.md        notes shared by repository-instruction hosts
     policy/research.md             on-demand research guidance
+    copilot-customization/languages/*.md
+                                   Copilot-only language instructions
     core/scripts/*.py              hook scripts
 
 Generated (never edit; this script overwrites them):
@@ -48,17 +50,55 @@ AGENTS_BEGIN = "<!-- BEGIN DENISTEK SDLC -->"
 AGENTS_END = "<!-- END DENISTEK SDLC -->"
 COPILOT_RULES = {
     "universal.instructions.md": (
-        "universal.md",
-        'description: "Universal high-priority policy for Copilot-assisted work"\n'
-        'applyTo: "**"',
+        POLICY / "universal.md",
+        "Universal high-priority policy for Copilot-assisted work",
+        "**",
         True,
     ),
     "evidence-based-research.instructions.md": (
-        "research.md",
-        'description: "Use when researching external claims, products, standards, '
-        'prices, limits, or architecture guidance that affects a software decision."',
+        POLICY / "research.md",
+        "Use when researching external claims, products, standards, prices, limits, "
+        "or architecture guidance that affects a software decision.",
+        None,
         False,
     ),
+    "python.instructions.md": (
+        COPILOT / "languages" / "python.md",
+        "Use when creating, changing, testing, or reviewing Python files and Python "
+        "project configuration.",
+        (
+            "**/*.py",
+            "**/*.pyi",
+            "**/*.ipynb",
+            "**/pyproject.toml",
+            "**/requirements*.txt",
+            "**/Pipfile",
+            "**/poetry.lock",
+            "**/uv.lock",
+        ),
+        False,
+    ),
+    "java.instructions.md": (
+        COPILOT / "languages" / "java.md",
+        "Use when creating, changing, testing, or reviewing Java files and Java "
+        "build configuration.",
+        (
+            "**/*.java",
+            "**/pom.xml",
+            "**/mvnw",
+            "**/mvnw.cmd",
+            "**/*.gradle",
+            "**/*.gradle.kts",
+            "**/gradlew",
+            "**/gradlew.bat",
+        ),
+        False,
+    ),
+}
+WORKSPACE_COPILOT_RULES = {
+    "sdlc.instructions.md": "universal.instructions.md",
+    "sdlc-python.instructions.md": "python.instructions.md",
+    "sdlc-java.instructions.md": "java.instructions.md",
 }
 
 
@@ -76,6 +116,28 @@ def tree(source: Path, codex: bool = False) -> dict[str, bytes]:
     return files
 
 
+def _copilot_instruction(
+    source: Path,
+    description: str,
+    apply_to: str | tuple[str, ...] | None,
+    banner: str,
+    notes: str | None = None,
+) -> str:
+    frontmatter = f'description: "{description}"'
+    if isinstance(apply_to, tuple):
+        patterns = "\n".join(f'  - "{pattern}"' for pattern in apply_to)
+        frontmatter += f"\napplyTo:\n{patterns}"
+    elif apply_to:
+        frontmatter += f'\napplyTo: "{apply_to}"'
+    text = (
+        f"---\n{frontmatter}\n---\n\n{banner}\n\n"
+        f"{source.read_text(encoding='utf-8').strip()}\n"
+    )
+    if notes:
+        text += f"\n{notes.strip()}\n"
+    return text
+
+
 def expected_for_host(plugin: Path, copilot: bool) -> dict[Path, bytes]:
     expected: dict[Path, bytes] = {}
     for skill in sorted(p for p in SKILLS.iterdir() if (p / "SKILL.md").is_file()):
@@ -86,11 +148,14 @@ def expected_for_host(plugin: Path, copilot: bool) -> dict[Path, bytes]:
     if copilot:
         notes = norm((COPILOT / "host-notes.md").read_bytes()).decode("utf-8").strip()
         rules = plugin / "com.github.copilot" / "rules"
-        for name, (source, frontmatter, with_notes) in COPILOT_RULES.items():
-            body = norm((POLICY / source).read_bytes()).decode("utf-8").strip()
-            text = f"---\n{frontmatter}\n---\n\n{BANNER}\n\n{body}\n"
-            if with_notes:
-                text += f"\n{notes}\n"
+        for name, (source, description, apply_to, with_notes) in COPILOT_RULES.items():
+            text = _copilot_instruction(
+                source,
+                description,
+                apply_to,
+                BANNER,
+                notes if with_notes else None,
+            )
             expected[rules / name] = text.encode("utf-8")
     return expected
 
@@ -133,6 +198,17 @@ def _write_managed_text(path: Path, body: str) -> None:
     path.write_text(updated, encoding="utf-8")
 
 
+def _write_managed_instruction(path: Path, content: str) -> None:
+    if path.is_file():
+        current = path.read_text(encoding="utf-8-sig")
+        if WORKSPACE_BANNER not in current:
+            raise ValueError(
+                f"Refusing to overwrite unmanaged Copilot instruction: {path}"
+            )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
 def _sync_skill_tree(source: Path, destination: Path) -> None:
     expected = tree(source, codex=True)
     if destination.is_dir():
@@ -157,16 +233,32 @@ def install_workspace(workspace: Path) -> None:
     copilot_notes = (COPILOT / "host-notes.md").read_text(encoding="utf-8").strip()
     claude_notes = (CLAUDE / "host-notes.md").read_text(encoding="utf-8").strip()
 
-    copilot_instruction = destination / ".github" / "instructions" / "sdlc.instructions.md"
-    copilot_instruction.parent.mkdir(parents=True, exist_ok=True)
-    copilot_instruction.write_text(
-        '---\n'
-        'description: "Universal high-priority policy for Copilot-assisted work"\n'
-        'applyTo: "**"\n'
-        '---\n\n'
-        f"{WORKSPACE_BANNER}\n\n{universal}\n\n{copilot_notes}\n",
-        encoding="utf-8",
-    )
+    instruction_root = destination / ".github" / "instructions"
+    instruction_files = {
+        instruction_root / workspace_name: COPILOT_RULES[rule_name]
+        for workspace_name, rule_name in WORKSPACE_COPILOT_RULES.items()
+    }
+    conflicts = [
+        path
+        for path in instruction_files
+        if path.is_file()
+        and WORKSPACE_BANNER not in path.read_text(encoding="utf-8-sig")
+    ]
+    if conflicts:
+        raise ValueError(
+            "Refusing to overwrite unmanaged Copilot instruction: "
+            + ", ".join(str(path) for path in conflicts)
+        )
+    for path, rule in instruction_files.items():
+        source, description, apply_to, with_notes = rule
+        content = _copilot_instruction(
+            source,
+            description,
+            apply_to,
+            WORKSPACE_BANNER,
+            copilot_notes if with_notes else None,
+        )
+        _write_managed_instruction(path, content)
     _write_managed_text(
         destination / ".claude" / "CLAUDE.md",
         f"{WORKSPACE_BANNER}\n\n{universal}\n\n{claude_notes}",

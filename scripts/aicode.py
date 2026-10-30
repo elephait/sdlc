@@ -162,7 +162,10 @@ def interactive(
             output_fn(f"  1. Onboard latest project: {projects[0]}")
         else:
             output_fn("  1. Onboard latest project: unavailable")
-        output_fn(f"  2. Onboard all Git projects under: {Path.cwd().resolve()}")
+        output_fn(
+            f"  2. Onboard this folder if it is a Git project, plus Git projects under: "
+            f"{Path.cwd().resolve()}"
+        )
         for option, project in enumerate(projects[1:9], start=3):
             output_fn(f"  {option}. Onboard recent project: {project}")
         output_fn("  R. Show recent reports (default: 5); use R10 for 10")
@@ -213,7 +216,8 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument(
         "--all",
         action="store_true",
-        help="Onboard all Git projects directly under the current folder.",
+        help="Onboard the current folder when it is a Git project and all Git "
+             "projects directly under it.",
     )
     action.add_argument(
         "--reports",
