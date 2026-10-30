@@ -1,10 +1,6 @@
 # Governed Multi-Agent Software Delivery
 
-This utility provides a shared operating framework for reliable AI-assisted software delivery. It allows engineering teams to apply multiple AI coding tools across different programming languages and stages of the development lifecycle without tying the workflow to one model, vendor or technology stack.
-
-## Governing Principle
-
-**Human intent is authoritative.** Across every language, AI model, agent and workflow stage, human-authored requirements, decisions, commits and code must be reviewed and treated with respect. Agents must understand and preserve that intent before proposing changes, and must make any departure explicit, justified and reviewable.
+This utility provides a shared operating framework for reliable AI-assisted software delivery. It allows engineering teams to apply multiple or one particular AI coding tools across different programming languages and stages of the development lifecycle without tying the workflow to one model, vendor or technology stack.
 
 ## Strategic Goals
 
@@ -39,10 +35,10 @@ This is currently a local Windows pilot and does not represent production certif
 
 ## One Shared Source, Multiple AI Tools
 
-For this SDLC project, run one command from any PowerShell directory:
+For this SDLC project, run the launcher from any PowerShell directory (replace `<sdlc-checkout>` with the folder that contains this repository):
 
 ```powershell
-sdlc\aicode.cmd
+& "<sdlc-checkout>\aicode.cmd"
 ```
 
 Start a new chat in the selected host after onboarding or refreshing a project. Current host integrations include VS Code Copilot, Claude Code, Codex and DeepSeek.

@@ -272,6 +272,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.current:
             return onboard_project(current_git_root(), forwarded)
         return interactive(args.db, forwarded=forwarded)
+    except EOFError:
+        print(
+            "ERROR: input closed; use --workspace, --all, --reports or --verify.",
+            file=sys.stderr,
+        )
+        return 1
     except (OSError, ValueError) as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1

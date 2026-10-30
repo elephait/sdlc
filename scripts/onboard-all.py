@@ -107,8 +107,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(f"\nTracking projects under {root}")
+    projects = scan(root)
+    if not projects:
+        print("  no Git projects found; nothing to onboard")
     failures = 0
-    for project in scan(root):
+    for project in projects:
         active = project / ".sdlc" / "active-story.json"
         bound = None
         if active.is_file():

@@ -4,9 +4,11 @@ import json
 import shutil
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from support import workspace as temp_workspace  # noqa: E402
 
 SYNC = Path(__file__).resolve().parents[2] / "scripts" / "sync-customizations.py"
 ROOT = SYNC.parents[1]
@@ -23,7 +25,7 @@ class GeneratedFilesTests(unittest.TestCase):
         self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
 
     def test_workspace_install_preserves_existing_instructions(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             agents = workspace / "AGENTS.md"
             agents.write_text("# Project instructions\n", encoding="utf-8")
@@ -67,7 +69,7 @@ class GeneratedFilesTests(unittest.TestCase):
             )
 
     def test_workspace_install_refreshes_managed_copilot_instruction(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             instruction = (
                 workspace / ".github/instructions/sdlc-python.instructions.md"
@@ -93,7 +95,7 @@ class GeneratedFilesTests(unittest.TestCase):
             self.assertNotIn("\nold", refreshed)
 
     def test_workspace_install_refuses_unmanaged_reserved_instruction(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             instruction = workspace / ".github/instructions/sdlc.instructions.md"
             instruction.parent.mkdir(parents=True)
@@ -119,7 +121,7 @@ class GeneratedFilesTests(unittest.TestCase):
 
 
     def test_workspace_install_writes_path_scoped_claude_rules(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             completed = subprocess.run(
                 [sys.executable, str(SYNC), "--workspace", str(workspace)],
@@ -141,7 +143,7 @@ class GeneratedFilesTests(unittest.TestCase):
             self.assertNotIn("VS Code", python_rule)
 
     def test_workspace_install_refuses_unmanaged_claude_rule(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             rule = workspace / ".claude/rules/sdlc-python.md"
             rule.parent.mkdir(parents=True)
@@ -161,7 +163,7 @@ class GeneratedFilesTests(unittest.TestCase):
 
     def test_workspace_install_refuses_colliding_user_skill_before_writing(self) -> None:
         for host in (".agents", ".github", ".claude"):
-            with self.subTest(host=host), tempfile.TemporaryDirectory() as temporary:
+            with self.subTest(host=host), temp_workspace("sync") as temporary:
                 workspace = Path(temporary)
                 skill = workspace / host / "skills/tracked-story/SKILL.md"
                 skill.parent.mkdir(parents=True)
@@ -176,7 +178,7 @@ class GeneratedFilesTests(unittest.TestCase):
                 self.assertFalse((workspace / "AGENTS.md").exists())
 
     def test_workspace_skill_refresh_preserves_user_added_files(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             command = [sys.executable, str(SYNC), "--workspace", str(workspace)]
             first = subprocess.run(command, text=True, capture_output=True, cwd=ROOT)
@@ -194,7 +196,7 @@ class GeneratedFilesTests(unittest.TestCase):
             self.assertFalse(stale.exists())
 
     def test_workspace_install_adopts_an_identical_legacy_skill(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             destination = workspace / ".agents/skills/tracked-story"
             shutil.copytree(ROOT / "skills/tracked-story", destination)
@@ -216,7 +218,7 @@ class GeneratedFilesTests(unittest.TestCase):
 
     def test_legacy_skill_install_from_an_earlier_payload_is_adopted(self) -> None:
         module = self._load_sync()
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             legacy = workspace / ".agents/skills/tracked-story/SKILL.md"
             legacy.parent.mkdir(parents=True)
@@ -232,7 +234,7 @@ class GeneratedFilesTests(unittest.TestCase):
 
     def test_unmatched_same_name_skill_is_refused_and_preserved(self) -> None:
         module = self._load_sync()
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             own = workspace / ".claude/skills/tracked-story/SKILL.md"
             own.parent.mkdir(parents=True)
@@ -246,7 +248,7 @@ class GeneratedFilesTests(unittest.TestCase):
 
     def test_installed_agents_file_carries_no_machine_path(self) -> None:
         module = self._load_sync()
-        with tempfile.TemporaryDirectory() as temporary:
+        with temp_workspace("sync") as temporary:
             workspace = Path(temporary)
             subprocess.run(["git", "init", "-q", str(workspace)], check=True)
 

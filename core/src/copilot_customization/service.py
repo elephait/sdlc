@@ -1430,6 +1430,8 @@ _CUSTOMIZATION_FILES = {
     "AGENTS.md",
     "CLAUDE.md",
     "aicode.cmd",
+    "onboard.cmd",
+    "onboard-all.cmd",
     "reports.cmd",
 }
 
@@ -1482,6 +1484,8 @@ def run_verify(workspace: Path) -> dict[str, Any]:
 
     `verify.py` exercises the working tree, not the index, so an unstaged
     change would make its result describe something other than the commit.
+    Untracked files are recorded in the result because they are visible to the
+    suite but are absent from the staged-tree hash.
     """
     resolved = require_under_dev(workspace, "Workspace")
     try:
@@ -1503,6 +1507,17 @@ def run_verify(workspace: Path) -> dict[str, Any]:
             "verify.py runs against the working tree; commit, stash or revert "
             "unstaged changes before using --run-verify."
         )
+    beyond_index = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--others", "--exclude-standard"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    untracked = (
+        [line for line in beyond_index.stdout.splitlines() if line]
+        if beyond_index.returncode == 0
+        else []
+    )
     tree_before = _staged_tree(root)
     # The verifier itself must be part of the tree being approved.
     _run_git(root, "ls-files", "--error-unmatch", "scripts/verify.py")
@@ -1542,6 +1557,10 @@ def run_verify(workspace: Path) -> dict[str, Any]:
         "testCount": int(match.group(1)) if match else None,
         "treeHash": tree_before,
         "result": "passed" if completed.returncode == 0 else "failed",
+        # verify.py sees the working tree; untracked files are not in treeHash,
+        # so name them rather than implying the staged tree was the whole input.
+        "untracked": untracked[:20],
+        "untrackedCount": len(untracked),
         "outputTail": "\n".join(output.splitlines()[-40:]),
     }
 
@@ -1613,6 +1632,16 @@ def record_gate(
     initialize(db_path)
     head_commit, staged_tree = _gate_baseline(resolved_workspace)
     verification = (details or {}).get("verification")
+    if isinstance(verification, dict):
+        failed_verification = (
+            verification.get("result") != "passed"
+            or verification.get("exitCode") not in (0, None)
+        )
+        if status == "passed" and failed_verification:
+            raise ValueError(
+                "A passed gate cannot carry a failed verification result; "
+                "fix the failure or record the gate as failed."
+            )
     verified_tree = (
         verification.get("treeHash") if isinstance(verification, dict) else None
     )

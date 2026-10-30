@@ -16,7 +16,8 @@ SPEC.loader.exec_module(launcher)
 
 class OnboardLauncherTests(unittest.TestCase):
     def test_tracking_only_does_not_refresh_or_validate_adapters(self):
-        with patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
+        with patch.object(launcher, "has_active_story", return_value=True), \
+                patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
             output = StringIO()
             with redirect_stdout(output):
                 self.assertEqual(0, launcher.main(["--workspace", str(ROOT), "--skip-refresh"]))
@@ -26,7 +27,8 @@ class OnboardLauncherTests(unittest.TestCase):
         self.assertIn("not refreshed or validated", output.getvalue())
 
     def test_refreshes_customization_before_tracking_and_preserves_binding(self):
-        with patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
+        with patch.object(launcher, "has_active_story", return_value=True), \
+                patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
             with redirect_stdout(StringIO()):
                 self.assertEqual(0, launcher.main(["--workspace", str(ROOT)]))
         self.assertEqual(["scripts/sync-customizations.py", "scripts/sdlc.py"],

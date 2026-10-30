@@ -45,7 +45,7 @@ class GateWorkflowTests(unittest.TestCase):
         self.git("config", "user.email", "fixture@example.invalid")
         self.write("README.md", "# Fixture\n")
         self.write("analysis.md", "# Analysis\n\nCriteria accepted.\n")
-        self.git("add", "README.md")
+        self.git("add", "README.md", "analysis.md")
 
     def git(self, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -160,7 +160,8 @@ class GateWorkflowTests(unittest.TestCase):
         result = run_verify(self.workspace)
         tree = self.git("write-tree").stdout.strip()
         self.assertEqual(tree, result["treeHash"])
-        self.git("add", "analysis.md")
+        self.write("later.md", "staged after verification\n")
+        self.git("add", "later.md")
         with self.assertRaisesRegex(ValueError, "staged tree changed after verify"):
             self.gate("implementation", details={"verification": result})
 
@@ -204,6 +205,8 @@ class GateWorkflowTests(unittest.TestCase):
                     "./core/a.py",
                     "scripts/onboard.py",
                     "aicode.cmd",
+                    "onboard.cmd",
+                    "onboard-all.cmd",
                 ],
             ),
         )
@@ -386,6 +389,30 @@ class GateWorkflowTests(unittest.TestCase):
         self.write("scripts/verify.py", "raise SystemExit('must not run')\n")
         with self.assertRaisesRegex(ValueError, "verify.py"):
             run_verify(self.workspace)
+
+
+    def test_passed_gate_rejects_failed_verification(self) -> None:
+        tree = self.git("write-tree").stdout.strip()
+        with self.assertRaisesRegex(ValueError, "cannot carry a failed verification"):
+            self.gate(
+                "implementation",
+                details={
+                    "verification": {
+                        "result": "failed",
+                        "exitCode": 1,
+                        "treeHash": tree,
+                    }
+                },
+            )
+
+    def test_run_verify_records_untracked_files(self) -> None:
+        (self.workspace / "scripts").mkdir()
+        self.write("scripts/verify.py", "print('Ran 1 test')\n")
+        self.git("add", "scripts/verify.py")
+        self.write("extra.py", "value = 1\n")
+        result = run_verify(self.workspace)
+        self.assertIn("extra.py", result["untracked"])
+        self.assertGreaterEqual(result["untrackedCount"], 1)
 
 
 if __name__ == "__main__":

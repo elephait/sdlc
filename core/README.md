@@ -42,6 +42,7 @@ Tracking hooks capture `SessionStart`, tool outcomes (`PostToolUse`, plus `PostT
 - Tracking does not expose authoritative token usage. Sessions carry a `--host` label for attribution; billing units are not recorded because no host supplies them.
 - SQLite coordinates processes on one shared filesystem, not across machines.
 - Paths are resolved per selected workspace. Set `SDLC_WORKSPACE_ROOT` only when a host needs an explicit broader boundary; hook locking works on Windows and POSIX.
+- Tests create their workspaces beside the repository checkout and delete them afterwards. On a slow or mounted drive, set `SDLC_TEST_ROOT` to a fast local folder before running `scripts/verify.py`.
 - Session analysis quality depends on recorded events and review summaries.
 
 Codex uses explicit CLI evidence rather than these hooks. Hook path/command checks are best-effort: shell aliases, wrappers and arbitrary interpreters require native host sandbox enforcement. A scope-hook crash is not an authorization grant.

@@ -385,6 +385,15 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "gate":
             workspace = args.workspace or select_project_folder(args.db)
             details = json.loads(args.details_json) if args.details_json else None
+            if (
+                isinstance(details, dict)
+                and "verification" in details
+                and not args.run_verify
+            ):
+                raise ValueError(
+                    "Verification evidence must come from --run-verify; "
+                    "--details-json cannot supply it."
+                )
             evidence = args.evidence
             recorded_by = args.recorded_by or os.environ.get("SDLC_AI_NAME")
             if (

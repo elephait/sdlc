@@ -39,6 +39,11 @@ def choose_workspace(workspace: Path | None, db: Path) -> Path:
     return select_project_folder(db, current_folder=Path.cwd())
 
 
+def has_active_story(workspace: Path) -> bool:
+    """Whether this workspace already has a local story binding."""
+    return (workspace / ".sdlc/active-story.json").is_file()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", type=Path,
@@ -81,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
                "--repository", repository]
     if intent:
         onboard.extend(["--intent", intent])
-    if args.story or not (workspace / ".sdlc/active-story.json").is_file():
+    if args.story or not has_active_story(workspace):
         onboard.extend(["--story", args.story or story])
     steps = [
         (
