@@ -1,0 +1,94 @@
+from __future__ import annotations
+
+import importlib.util
+from pathlib import Path
+import subprocess
+import unittest
+from contextlib import redirect_stdout, redirect_stderr
+from io import StringIO
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location("onboard_launcher", ROOT / "scripts/onboard.py")
+launcher = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(launcher)
+
+
+class OnboardLauncherTests(unittest.TestCase):
+    def test_tracking_only_does_not_refresh_or_validate_adapters(self):
+        with patch.object(launcher, "has_active_story", return_value=True), \
+                patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
+            output = StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(0, launcher.main(["--workspace", str(ROOT), "--skip-refresh"]))
+        run.assert_called_once()
+        self.assertEqual("scripts/sdlc.py", run.call_args.args[0][1])
+        self.assertNotIn("--story", run.call_args.args[0])
+        self.assertIn("not refreshed or validated", output.getvalue())
+
+    def test_refreshes_customization_before_tracking_and_preserves_binding(self):
+        with patch.object(launcher, "has_active_story", return_value=True), \
+                patch.object(launcher.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
+            with redirect_stdout(StringIO()):
+                self.assertEqual(0, launcher.main(["--workspace", str(ROOT)]))
+        self.assertEqual(["scripts/sync-customizations.py", "scripts/sdlc.py"],
+                         [call.args[0][1] for call in run.call_args_list])
+        self.assertIn(str(ROOT), run.call_args_list[0].args[0])
+        self.assertNotIn("--story", run.call_args_list[-1].args[0])
+        self.assertTrue(all(call.kwargs["cwd"] == ROOT for call in run.call_args_list))
+
+    def test_failure_stops_before_tracking_and_propagates_exit_code(self):
+        results = [subprocess.CompletedProcess([], 7)]
+        with patch.object(launcher.subprocess, "run", side_effect=results) as run:
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
+                self.assertEqual(7, launcher.main(["--workspace", str(ROOT)]))
+        self.assertEqual(1, run.call_count)
+
+    def test_without_workspace_the_project_is_chosen_before_any_step(self):
+        chosen = ROOT.parent / "other-project"
+        ok = subprocess.CompletedProcess([], 0, stdout="")
+        with patch.object(launcher, "select_project_folder", return_value=chosen) as select, \
+                patch.object(launcher.sys.stdin, "isatty", return_value=True), \
+                patch.object(launcher.subprocess, "run", return_value=ok) as run:
+            with redirect_stdout(StringIO()):
+                self.assertEqual(0, launcher.main([]))
+        select.assert_called_once()
+        tracking = run.call_args_list[-1].args[0]
+        self.assertEqual(str(chosen), tracking[tracking.index("--workspace") + 1])
+        # A new project gets an adoption intent, not the SDLC-specific intent.
+        self.assertNotIn(launcher.SDLC_INTENT, tracking)
+        self.assertIn("--repository", tracking)
+        self.assertIn("--story", tracking)
+
+    def test_noninteractive_without_history_defaults_to_current_folder(self):
+        current = ROOT.parent / "current-project"
+        ok = subprocess.CompletedProcess([], 0, stdout="")
+        with patch.object(launcher, "recent_project_folders", return_value=[]), \
+                patch.object(launcher.Path, "cwd", return_value=current), \
+                patch.object(launcher.sys.stdin, "isatty", return_value=False), \
+                patch.object(launcher.subprocess, "run", return_value=ok) as run:
+            with redirect_stdout(StringIO()):
+                self.assertEqual(0, launcher.main([]))
+        tracking = run.call_args_list[-1].args[0]
+        self.assertEqual(str(current), tracking[tracking.index("--workspace") + 1])
+
+    def test_explicit_workspace_skips_the_prompt_and_sdlc_gets_its_intent(self):
+        ok = subprocess.CompletedProcess([], 0)
+        with patch.object(launcher, "select_project_folder") as select, \
+                patch.object(launcher.subprocess, "run", return_value=ok) as run:
+            with redirect_stdout(StringIO()):
+                self.assertEqual(0, launcher.main(["--workspace", str(ROOT)]))
+        select.assert_not_called()
+        self.assertIn(launcher.SDLC_INTENT, run.call_args_list[-1].args[0])
+
+    def test_selection_error_stops_before_any_step(self):
+        with patch.object(launcher, "select_project_folder", side_effect=ValueError("none")), \
+                patch.object(launcher.sys.stdin, "isatty", return_value=True), \
+                patch.object(launcher.subprocess, "run") as run:
+            with redirect_stderr(StringIO()):
+                self.assertEqual(1, launcher.main([]))
+        run.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

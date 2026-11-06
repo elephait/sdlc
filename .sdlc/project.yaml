@@ -1,0 +1,27 @@
+schemaVersion: 1
+project: sdlc
+repository: elephait/sdlc
+
+technology:
+  language: python
+  pythonVersion: '3.11+'
+  runtimeDependencies: none
+  storage: sqlite
+
+validation:
+  compile:
+    command: python -m compileall -q core/src core/scripts scripts
+  test:
+    command: python scripts/verify.py
+  sync:
+    command: python scripts/sync-customizations.py --check
+  smoke:
+    command: python scripts/validate-skills.py
+
+git:
+  pushByAgentAllowed: false
+  localCommitRequiresApproval: false
+  destructiveOperationsAllowed: false
+
+tracking:
+  storyId: SDLC-001
